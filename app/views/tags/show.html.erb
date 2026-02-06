@@ -1,0 +1,17 @@
+<h1><span class="tag"><%= @tag.name %></span></h1>
+
+<% if @cards.any? %>
+  <ul class="deck-list">
+    <% @cards.each do |card| %>
+      <li class="deck-item">
+        <div class="card-title">
+          <%= link_to card.title, card_path(current_account.slug, card) %>
+        </div>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <div class="empty">No cards with this tag.</div>
+<% end %>
+
+<%= link_to "Back to tags", tags_path(current_account.slug), class: "btn" %>

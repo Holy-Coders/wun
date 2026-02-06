@@ -1,0 +1,97 @@
+<p>
+  <%= link_to "Back", account_root_path(current_account.slug) %>
+  <% if current_user&.admin_of?(current_account) %>
+    &middot; <%= link_to "Segment Audit", audit_dashboard_path(current_account.slug) %>
+  <% end %>
+</p>
+
+<h1>Dashboard</h1>
+<p class="stat">This week: <strong><%= distance_of_time_in_words(@total_focused) %></strong> total focus time &middot; Avg session: <strong><%= distance_of_time_in_words(@avg_segment) %></strong></p>
+
+<% if @tags_by_time.any? %>
+  <h2>Top Tags by Focus Time</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Tag</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @tags_by_time.each do |name, seconds| %>
+        <tr>
+          <td><span class="tag"><%= name %></span></td>
+          <td><%= distance_of_time_in_words(seconds) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+
+<% if @cards_by_time.any? %>
+  <h2>Top Cards by Focus Time</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Card</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @cards_by_time.each do |card, seconds| %>
+        <tr>
+          <td><%= link_to card.title, card_path(current_account.slug, card) %></td>
+          <td><%= distance_of_time_in_words(seconds) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+
+<% if @user_totals.any? %>
+  <h2>Per-User Totals</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Time</th>
+        <th>Avg Session</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @user_totals.each do |user, seconds| %>
+        <tr>
+          <td><%= user.name %></td>
+          <td><%= distance_of_time_in_words(seconds) %></td>
+          <td><%= @avg_focus_per_user[user] ? distance_of_time_in_words(@avg_focus_per_user[user]) : "—" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+
+<% if @daily_focus.any? %>
+  <h2>Daily Breakdown</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Focus Time</th>
+        <th>Switches</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @daily_focus.each do |date, seconds| %>
+        <tr>
+          <td><%= date %></td>
+          <td><%= distance_of_time_in_words(seconds) %></td>
+          <td><%= @switches_per_day[date] || 0 %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+
+<% if @tags_by_time.empty? && @cards_by_time.empty? && @user_totals.empty? %>
+  <div class="empty">No activity this week. Focus time appears here when you work.</div>
+<% end %>

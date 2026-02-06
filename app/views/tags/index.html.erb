@@ -1,0 +1,13 @@
+<h1>Tags</h1>
+
+<% if @tags.any? %>
+  <div class="tags section-gap">
+    <% @tags.each do |tag| %>
+      <%= link_to tag.name, tag_path(current_account.slug, tag), class: "tag" %>
+    <% end %>
+  </div>
+<% else %>
+  <div class="empty">No tags yet.</div>
+<% end %>
+
+<%= link_to "Back", account_root_path(current_account.slug), class: "btn" %>

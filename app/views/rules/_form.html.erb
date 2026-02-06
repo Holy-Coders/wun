@@ -1,0 +1,49 @@
+<%= form_with model: rule, url: url do |f| %>
+  <div class="form-group">
+    <%= f.label :name %>
+    <%= f.text_field :name, required: true, autofocus: true %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :trigger %>
+    <%= f.select :trigger, Rule::TRIGGERS.map { |t| [t.humanize, t] }, {}, required: true %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :action_type, "Action" %>
+    <%= f.select :action_type, [
+      ["Add tag", "add_tag"],
+      ["Remove tag", "remove_tag"],
+      ["Keyword → add tag", "keyword_tag"],
+      ["Keyword → remove tag", "keyword_remove_tag"]
+    ], {}, required: true %>
+  </div>
+
+  <div class="form-group">
+    <%= label_tag "action_config[tag]", "Target tag" %>
+    <%= text_field_tag "rule[action_config][tag]", rule.action_config&.dig("tag"), placeholder: "e.g. blocked" %>
+  </div>
+
+  <div class="form-group">
+    <%= label_tag "action_config[when_tag]", "Condition: when tag equals (optional)" %>
+    <%= text_field_tag "rule[action_config][when_tag]", rule.action_config&.dig("when_tag"), placeholder: "e.g. sys:active" %>
+  </div>
+
+  <div class="form-group">
+    <%= label_tag "action_config[keyword]", "Keyword to match in comment (optional)" %>
+    <%= text_field_tag "rule[action_config][keyword]", rule.action_config&.dig("keyword"), placeholder: "e.g. blocked" %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :position, "Priority (lower runs first)" %>
+    <%= f.number_field :position %>
+  </div>
+
+  <div class="form-group">
+    <%= f.check_box :active %>
+    <%= f.label :active, "Enabled" %>
+  </div>
+
+  <%= f.submit submit_text, class: "btn btn-primary" %>
+  <%= link_to "Cancel", rules_path(current_account.slug), class: "btn" %>
+<% end %>
