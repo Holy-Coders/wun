@@ -1,5 +1,5 @@
 <h1>Events: <%= @card.title %></h1>
-<p><%= link_to "Back to card", card_path(current_account.slug, @card) %></p>
+<%= link_to "Back to card", card_path(current_account.slug, @card), class: "back-link" %>
 
 <table>
   <thead>

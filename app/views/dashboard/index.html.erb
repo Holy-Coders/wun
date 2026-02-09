@@ -1,12 +1,14 @@
-<p>
-  <%= link_to "Back", account_root_path(current_account.slug) %>
+<div style="display: flex; align-items: center; justify-content: space-between;">
+  <%= link_to "Back", account_root_path(current_account.slug), class: "back-link" %>
   <% if current_user&.admin_of?(current_account) %>
-    &middot; <%= link_to "Segment Audit", audit_dashboard_path(current_account.slug) %>
+    <%= link_to "Segment Audit", audit_dashboard_path(current_account.slug), class: "btn" %>
   <% end %>
-</p>
+</div>
 
 <h1>Dashboard</h1>
-<p class="stat">This week: <strong><%= distance_of_time_in_words(@total_focused) %></strong> total focus time &middot; Avg session: <strong><%= distance_of_time_in_words(@avg_segment) %></strong></p>
+<div class="activity-summary" style="margin-bottom: 1.5rem;">
+  <p class="stat">This week: <strong><%= distance_of_time_in_words(@total_focused) %></strong> total focus time &middot; Avg session: <strong><%= distance_of_time_in_words(@avg_segment) %></strong></p>
+</div>
 
 <% if @tags_by_time.any? %>
   <h2>Top Tags by Focus Time</h2>
