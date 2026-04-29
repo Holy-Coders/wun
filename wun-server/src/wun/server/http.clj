@@ -67,16 +67,20 @@
 
 (defn- broadcast-to-channel!
   "Diff `ch`'s prior tree against the current tree and enqueue a patch
-   envelope iff there are patches or an intent to resolve. Updates the
-   stored prior on successful enqueue. New connections register with
-   prior = nil; `diff/diff` returns a full :replace-at-root in that
-   case, so the initial frame falls out of the same code path."
+   envelope iff there are patches or an intent to resolve. Always
+   carries the current screen state so the client can mirror it for
+   optimistic prediction. Updates the stored prior on successful
+   enqueue. New connections register with prior = nil; `diff/diff`
+   returns a full :replace-at-root in that case, so the initial frame
+   falls out of the same code path."
   [ch resolves-intent]
   (let [tree    (current-tree)
         prior   (state/prior-tree ch)
         patches (diff/diff prior tree)]
     (when (or (seq patches) resolves-intent)
-      (let [env (wire/patch-envelope patches resolves-intent)]
+      (let [env (wire/patch-envelope patches
+                                     {:resolves-intent resolves-intent
+                                      :state           @state/app-state})]
         (when (a/offer! ch env)
           (state/update-prior-tree! ch tree))))))
 

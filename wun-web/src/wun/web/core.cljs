@@ -1,14 +1,15 @@
 (ns wun.web.core
-  "Wun web entry point. Connects to the server's SSE patch stream,
-   applies patches into a local tree mirror, and re-renders via the
-   open renderer registry on every update.
+  "Wun web entry point. Subscribes to the server's SSE patch stream,
+   delegates each envelope to `wun.web.intent-bus`, and mounts whatever
+   the bus produces as `display-tree` to the DOM.
 
-   Renderers and the foundational `:wun/*` web bindings live in
-   sibling namespaces; this file only wires SSE + state + mount.
-   Side-effecting requires populate the registries on load."
-  (:require [cognitect.transit :as transit]
-            [wun.diff          :as diff]
-            [wun.web.renderers :as renderers]
+   The optimistic dispatch + reconcile machinery lives in `intent-bus`
+   so renderers (which fire intents from button click handlers) and
+   this file (which feeds incoming envelopes) share one source of
+   truth. Side-effecting requires below populate the open registries."
+  (:require [cognitect.transit  :as transit]
+            [wun.web.intent-bus :as bus]
+            [wun.web.renderers  :as renderers]
             ;; populate registries:
             wun.foundation.components
             wun.web.foundation
@@ -28,9 +29,7 @@
 (defn- str->t [s] (transit/read reader s))
 
 ;; ---------------------------------------------------------------------------
-;; Local tree mirror
-
-(defonce tree-state (atom nil))
+;; Mount
 
 (defn- ^js status-el [] (.getElementById js/document "status"))
 (defn- ^js app-el    [] (.getElementById js/document "app"))
@@ -38,22 +37,10 @@
 (defn- set-status! [s]
   (when-let [el (status-el)] (set! (.-textContent el) s)))
 
-;; Re-mount whenever the mirror changes.
-(add-watch tree-state ::mount
+(add-watch bus/display-tree ::mount
   (fn [_ _ _ tree]
     (when-let [root (app-el)]
       (renderers/mount-tree! root tree))))
-
-;; ---------------------------------------------------------------------------
-;; Patch application -- delegates to the shared cljc differ. Phase 1.B
-;; honours :replace / :insert / :remove at any path; phase 1.D will
-;; add prop-aware ops.
-
-(defn- apply-envelope! [{:keys [patches status error]}]
-  (when (= status :error)
-    (js/console.error "wun: server error" (clj->js error)))
-  (when (seq patches)
-    (swap! tree-state diff/apply-patches patches)))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE wiring
@@ -66,7 +53,7 @@
     (.addEventListener src "patch"
       (fn [ev]
         (set-status! "connected")
-        (apply-envelope! (str->t (.-data ev)))))
+        (bus/apply-envelope! (str->t (.-data ev)))))
     (.addEventListener src "open"
       (fn [_] (set-status! "connected")))
     (.addEventListener src "error"
@@ -81,4 +68,4 @@
 
 (defn ^:export after-reload []
   (when-let [root (app-el)]
-    (renderers/mount-tree! root @tree-state)))
+    (renderers/mount-tree! root @bus/display-tree)))

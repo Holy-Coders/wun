@@ -58,9 +58,19 @@ the smallest path that changed. Frame size for a single counter
 increment dropped from ~673 B (full tree) to ~169 B (one deep
 `:replace`).
 
-What's still phase 1+: optimistic UI on web (run morphs locally;
-reconcile via `:resolves-intent`), default loading/error/skeletons,
-capability negotiation, native clients, WebFrame fallback, devtools.
+Slice 1.C lights up the brief's marquee thesis: one morph fn defined
+in shared `.cljc` runs on both server (authoritative) and client
+(optimistic prediction). The wire envelope grows a `:state` field;
+the client mirrors confirmed-state, keeps a pending-intents queue,
+and renders display = `(reduce morph confirmed-state pending)`. When
+the server's confirmation arrives tagged with `:resolves-intent`,
+the matching pending entry drops and the display recomputes -- a
+match collapses to no visible change, a mismatch converges the UI to
+the server's authoritative version.
+
+What's still phase 1+: default loading/error/skeletons, capability
+negotiation, native clients, WebFrame fallback, devtools, prop-aware
+patch ops, key-aware list reordering.
 
 ### Run it
 
@@ -171,7 +181,9 @@ identically.
     client. Diff + apply live in shared `wun.diff` (cljc) so producer
     and consumer can't drift. *Done.*
   - **1.C** shared `.cljc` morphs run on web for optimistic UI;
-    reconciliation via `:resolves-intent`.
+    reconciliation via `:resolves-intent`. Envelope carries `:state`
+    so the client mirrors the screen state and can run the same
+    `wun.intents/apply-intent` morphs the server runs. *Done.*
   - **1.D** swap in Pedestal + shadow-cljs + reagent + Malli once
     Clojars is reachable; promote `defcomponent` to a real macro with
     schema validation.

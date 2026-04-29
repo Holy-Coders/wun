@@ -16,9 +16,14 @@
     (transit/read r)))
 
 (defn patch-envelope
-  "Build the SSE envelope shape: a (possibly empty) `:patches` vector,
-   `:status :ok`, optionally tagged with the intent UUID it resolves."
+  "Build the SSE envelope: a (possibly empty) `:patches` vector and
+   `:status :ok`, plus optional `extras` keys:
+
+     :resolves-intent  the UUID of the intent this envelope confirms
+     :state            current screen state, mirrored client-side so
+                       optimistic morphs can predict against the same
+                       value the server saw"
   ([patches] (patch-envelope patches nil))
-  ([patches resolves-intent]
-   (cond-> {:patches (vec patches) :status :ok}
-     resolves-intent (assoc :resolves-intent resolves-intent))))
+  ([patches extras]
+   (merge {:patches (vec patches) :status :ok}
+          (some-> extras (select-keys [:resolves-intent :state])))))
