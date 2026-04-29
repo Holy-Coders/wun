@@ -46,18 +46,29 @@
 ;; SSE wiring
 
 (defonce ^:private es (atom nil))
+(defonce ^:private was-connected? (atom false))
 
 (defn- start-sse! []
   (when-let [old @es] (.close old))
   (let [src (js/EventSource. (str server-base "/wun"))]
     (.addEventListener src "patch"
       (fn [ev]
+        (when-not @was-connected?
+          (js/console.info "wun: SSE connected"))
+        (reset! was-connected? true)
         (set-status! "connected")
         (bus/apply-envelope! (str->t (.-data ev)))))
     (.addEventListener src "open"
-      (fn [_] (set-status! "connected")))
+      (fn [_]
+        (when-not @was-connected?
+          (js/console.info "wun: SSE open"))
+        (set-status! "connected")))
     (.addEventListener src "error"
-      (fn [_] (set-status! "disconnected (browser will retry)")))
+      (fn [_]
+        (when @was-connected?
+          (js/console.warn "wun: SSE disconnected; EventSource will retry"))
+        (reset! was-connected? false)
+        (set-status! "disconnected (browser will retry)")))
     (reset! es src)))
 
 ;; ---------------------------------------------------------------------------
@@ -75,6 +86,7 @@
 
 (defn ^:export init []
   (mount!)
+  (bus/start-pending-gc!)
   (start-sse!))
 
 (defn ^:export after-reload []

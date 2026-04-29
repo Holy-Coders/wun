@@ -25,6 +25,7 @@
    pre-empted, resolves directories to index.html, and pins
    Content-Type from the resolved file's extension."
   (:require [clojure.core.async    :as a]
+            [clojure.tools.logging :as log]
             [io.pedestal.http      :as http]
             [io.pedestal.http.body-params :as body-params]
             [io.pedestal.http.route :as route]
@@ -35,7 +36,8 @@
             [wun.screens           :as screens]
             [wun.server.state      :as state]
             [wun.server.wire       :as wire])
-  (:import  [java.io File]))
+  (:import  [java.io File]
+            [java.util.concurrent Executors ScheduledExecutorService TimeUnit]))
 
 ;; ---------------------------------------------------------------------------
 ;; Tree + broadcast
@@ -49,7 +51,9 @@
    envelope iff there are patches or an intent to resolve. Always
    carries the current screen state so the client can mirror it for
    optimistic prediction. Updates the stored prior on successful
-   enqueue."
+   enqueue. On offer! failure, evicts the connection iff its channel
+   has actually closed (so transient buffer-full conditions don't drop
+   slow-but-alive clients)."
   [ch resolves-intent]
   (let [tree    (current-tree)
         prior   (state/prior-tree ch)
@@ -59,8 +63,14 @@
                                       {:resolves-intent resolves-intent
                                        :state           @state/app-state})
             data (wire/write-transit-json env)]
-        (when (a/offer! ch {:name "patch" :data data})
-          (state/update-prior-tree! ch tree))))))
+        (cond
+          (a/offer! ch {:name "patch" :data data})
+          (state/update-prior-tree! ch tree)
+
+          (state/closed? ch)
+          (do (state/remove-connection! ch)
+              (log/debugf "wun: evicted closed connection (%d remain)"
+                          (state/connection-count))))))))
 
 (defn broadcast!
   "Diff against every connection's prior tree and enqueue per-channel
@@ -176,9 +186,61 @@
     ::http/secure-headers  nil
     ::http/allowed-origins {:creds true :allowed-origins (constantly true)}}))
 
+;; ---------------------------------------------------------------------------
+;; Per-connection GC. Pedestal closes the SSE event channel when a
+;; client disconnects, but the entry in state/connections only goes
+;; away when (a) a subsequent broadcast tries to offer! to it and
+;; finds it closed, or (b) this scheduled sweep runs. Without (b),
+;; a server with many short-lived connections under no broadcast
+;; pressure leaks entries in the map.
+
+(defonce ^:private ^ScheduledExecutorService gc-pool
+  (Executors/newSingleThreadScheduledExecutor
+   (reify java.util.concurrent.ThreadFactory
+     (newThread [_ r]
+       (doto (Thread. ^Runnable r "wun-conn-gc")
+         (.setDaemon true))))))
+
+(defonce ^:private gc-handle (atom nil))
+
+(defn- probe! [ch]
+  ;; Push an SSE comment frame so Pedestal attempts a write and
+  ;; surfaces dead sockets. Comments (": ...\n\n") are ignored by the
+  ;; EventSource spec, so the client never sees them.
+  (a/offer! ch {:data ":wun-probe"}))
+
+(defn- gc-tick! []
+  (let [before    (state/connection-count)
+        ;; First, evict anything Pedestal has already closed.
+        evicted-1 (state/evict-closed!)
+        ;; Then probe what's left so the next tick can detect any
+        ;; sockets that have died since the last write attempt.
+        live      (keys @state/connections)
+        _         (doseq [ch live] (probe! ch))
+        after     (state/connection-count)]
+    (log/debugf "wun: gc tick (before=%d evicted=%d after=%d)"
+                before evicted-1 after)
+    (when (pos? evicted-1)
+      (log/infof "wun: gc'd %d closed connection(s) (%d remain)"
+                 evicted-1 after))))
+
+(defn- start-gc! [interval-secs]
+  (when-let [h @gc-handle] (.cancel ^java.util.concurrent.ScheduledFuture h false))
+  (reset! gc-handle
+          (.scheduleAtFixedRate gc-pool
+                                ^Runnable gc-tick!
+                                ^long interval-secs
+                                ^long interval-secs
+                                TimeUnit/SECONDS)))
+
+(defn- stop-gc! []
+  (when-let [h @gc-handle]
+    (.cancel ^java.util.concurrent.ScheduledFuture h false)
+    (reset! gc-handle nil)))
+
 (defn start!
   ([] (start! {}))
-  ([{:keys [static] :as opts}]
+  ([{:keys [static gc-interval-secs] :or {gc-interval-secs 30} :as opts}]
    (let [resolved-static (existing-dir
                           (or static
                               (System/getenv "WUN_STATIC")
@@ -191,7 +253,9 @@
                                  #(conj (vec %) (static-interceptor resolved-static)))))]
      (when resolved-static
        (println (str "  serving static files from " (.getPath resolved-static))))
+     (start-gc! gc-interval-secs)
      (-> sm http/create-server http/start))))
 
 (defn stop! [server]
+  (stop-gc!)
   (when server (http/stop server)))

@@ -200,6 +200,13 @@ identically.
     Hiccup; a single reagent root re-renders when the
     `display-tree` reagent atom changes, and React's reconciler
     handles incremental DOM updates. *Done.*
+  - **1.E** per-connection tree eviction (the brief's risk #5) and
+    client reconnection awareness. Server: scheduled GC sweep
+    actively probes each channel via a `:wun-probe` SSE comment
+    and evicts whatever Pedestal has closed. Client: pending
+    intents tagged with timestamps; periodic JS-interval GC drops
+    entries older than 30 s; bootstrap-frame detection (a
+    `:replace` at root) clears pending across reconnect.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
