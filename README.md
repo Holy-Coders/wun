@@ -33,12 +33,11 @@ any time with `git subtree split`.
 
 The smallest end-to-end loop that proves the architecture:
 
-1. Pedestal app, one route `/wun` (SSE), one hardcoded screen, one
-   `definent` (`:counter/inc`).
+1. JDK `HttpServer` + manual SSE on `/wun`, plus a `definent` registry.
 2. ClojureScript client subscribes to the SSE stream, mirrors the tree,
-   renders Hiccup, dispatches the intent on button press.
-3. Server applies the morph and re-broadcasts the full tree to all
-   connected clients.
+   renders Hiccup to vanilla DOM, dispatches intents on button press.
+3. Server applies the morph and re-broadcasts the full tree to every
+   connected client.
 
 That is *all* that's wired up right now. No diffing, no optimistic UI, no
 native renderers, no fallback, no capability negotiation. Each of those is
@@ -46,26 +45,47 @@ a phase-1+ deliverable.
 
 ### Run it
 
-Two terminals.
-
-**Server:**
-
 ```bash
-cd wun-server
-clj -M:run
-```
+# 1. build the cljs client (one-time, ~10s)
+cd wun-web    && clojure -M:build
 
-**Web client:**
+# 2. start the server (also serves the web client at /)
+cd wun-server && clojure -M:run
 
-```bash
-cd wun-web
-npm install
-npm run watch
-# open http://localhost:8081
+# open http://localhost:8080
 ```
 
 Click the buttons; every connected tab updates because the server
 broadcasts the new tree to all SSE connections.
+
+### What's verified end-to-end
+
+- `GET /wun` emits a `:replace`-at-root patch envelope on connect.
+- `POST /intent` applies the morph and broadcasts the new tree to every
+  open SSE connection. Multi-client broadcast confirmed; both clients see
+  the same `Counter: 0 → 1 → 2` trail.
+- Static asset serving with path-traversal protection (`/js/../../etc/passwd`
+  → 404).
+- Transit-json round-trips on the wire including `:resolves-intent` UUIDs.
+
+### A note on the stack
+
+The brief calls for **Pedestal** on the server, **shadow-cljs + reagent**
+on the web. Phase 0 ships with the JDK's built-in `HttpServer` and
+`cljs.main` + a vanilla-DOM renderer because the development sandbox we
+built it in cannot reach Clojars (only Maven Central). The substitution is
+transport- and view-layer only:
+
+- The wire format is identical (transit-json patch envelopes, namespaced
+  Hiccup component trees, intent envelopes with UUIDs).
+- The intent semantics are identical (`definent` registers a `:morph`,
+  applied server-authoritatively, broadcasts a full tree).
+- The component vocabulary is identical (`:wun/Stack`, `:wun/Text`,
+  `:wun/Button`, with `defmulti` dispatch on the keyword).
+
+Phase 1 swaps Pedestal in (interceptor chain, content negotiation, NIO
+SSE) and reagent in (proper React reconciler, hot reload), without
+touching the wire format or the brief's API surface.
 
 ## Working principles
 
@@ -119,8 +139,9 @@ identically.
 ## Phase plan (summary)
 
 - **Phase 0** -- spike. Validate the loop feels right. *(this commit)*
-- **Phase 1** -- server foundations + web client. Tree diffing, optimistic
-  UI on web, default loading/error/skeleton, devtools, full registry.
+- **Phase 1** -- server foundations + web client. Swap in Pedestal and
+  reagent. Tree diffing, optimistic UI on web, default
+  loading/error/skeleton, devtools, full registry.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.

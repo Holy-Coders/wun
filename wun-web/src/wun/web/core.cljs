@@ -1,19 +1,22 @@
 (ns wun.web.core
   "Wun web phase-0 client.
 
-   Connects to the server's SSE patch stream, mirrors the UI tree in a
-   reagent atom, and renders Hiccup via a tiny component-keyword dispatch.
-   User actions are POSTed back to the server as transit-json intents."
-  (:require [reagent.core :as r]
-            [reagent.dom.client :as rdc]
-            [cognitect.transit :as transit]))
+   Connects to the server's SSE patch stream, mirrors the UI tree in an
+   atom, and renders Hiccup to vanilla DOM via a tiny component-keyword
+   dispatch. User actions are POSTed back to the server as transit-json
+   intents.
+
+   The brief calls for reagent. Phase 0 ships with a hand-rolled DOM
+   renderer because reagent lives on Clojars and this sandbox can't reach
+   it. Phase 1 swaps reagent in -- the renderer is the only thing that
+   changes; the SSE wiring, patch applicator, intent dispatcher, and
+   component vocabulary are stack-agnostic."
+  (:require [cognitect.transit :as transit]))
 
 ;; ---------------------------------------------------------------------------
 ;; Config
 
 (def server-base
-  "Server origin. Override at the JS console with `window.WUN_SERVER`
-   when you want to point the client at a remote host."
   (or (some-> js/window .-WUN_SERVER) "http://localhost:8080"))
 
 ;; ---------------------------------------------------------------------------
@@ -28,28 +31,13 @@
 ;; ---------------------------------------------------------------------------
 ;; Local mirror of the server's UI tree.
 
-(defonce tree-state (r/atom nil))
-(defonce status-el  (delay (.getElementById js/document "status")))
+(defonce tree-state (atom nil))
+
+(defn- ^js status-el [] (.getElementById js/document "status"))
+(defn- ^js app-el    [] (.getElementById js/document "app"))
 
 (defn- set-status! [s]
-  (when-let [el @status-el] (set! (.-textContent el) s)))
-
-;; ---------------------------------------------------------------------------
-;; Patch application. Phase 0 only honours :replace at root. Future phases
-;; will support arbitrary paths and :insert / :remove ops.
-
-(defn- apply-patch! [{:keys [op path value]}]
-  (case op
-    :replace (if (empty? path)
-               (reset! tree-state value)
-               (do (js/console.warn "wun: non-root :replace not implemented" (clj->js path))
-                   nil))
-    (js/console.warn "wun: unsupported op" (str op))))
-
-(defn- apply-envelope! [{:keys [patches status error]}]
-  (when (= status :error)
-    (js/console.error "wun: server error" (clj->js error)))
-  (doseq [p patches] (apply-patch! p)))
+  (when-let [el (status-el)] (set! (.-textContent el) s)))
 
 ;; ---------------------------------------------------------------------------
 ;; Intent dispatch.
@@ -65,70 +53,107 @@
     id))
 
 ;; ---------------------------------------------------------------------------
-;; Renderer. Component vocabulary -> DOM. Unknown components fall through
-;; to a visible placeholder. In phase 2 this is where the WebFrame fallback
-;; lives on web (an iframe / Turbo frame).
+;; Renderer. Hiccup -> DOM. Anything we don't understand becomes a visible
+;; placeholder; in phase 2 this is where the WebFrame fallback lives on web.
 
 (declare render-node)
 
-(defn- component-tag [v]
-  (when (and (vector? v) (keyword? (first v))) (first v)))
+(defn- el [tag] (.createElement js/document tag))
 
-(defn- props+children [[_ maybe-props & rest]]
-  (if (map? maybe-props)
-    [maybe-props rest]
-    [{} (cons maybe-props rest)]))
+(defn- props+children [v]
+  (let [maybe-props (second v)]
+    (if (map? maybe-props)
+      [maybe-props (drop 2 v)]
+      [{}          (rest v)])))
 
-(defn- render-children [children]
-  (map-indexed (fn [i c] ^{:key i} [render-node c]) children))
+(defn- append-children! [^js parent children]
+  (doseq [c children]
+    (when-some [n (render-node c)]
+      (.appendChild parent n))))
 
 (defmulti render-component (fn [tag _props _children] tag))
 
 (defmethod render-component :default [tag _props children]
-  (into [:div.wun-unknown {} (str "[unknown component " tag "]")]
-        (render-children children)))
+  (let [n (el "div")]
+    (set! (.-className n) "wun-unknown")
+    (set! (.-textContent n) (str "[unknown component " tag "]"))
+    (append-children! n children)
+    n))
 
 (defmethod render-component :wun/Stack [_ {:keys [direction gap padding]} children]
-  (into [:div.wun-stack
-         {:data-direction (when direction (name direction))
-          :style {:gap (or gap 8)
-                  :padding padding}}]
-        (render-children children)))
+  (let [n (el "div")
+        s (.-style n)]
+    (set! (.-className n) "wun-stack")
+    (when direction
+      (.setAttribute n "data-direction" (name direction)))
+    (when gap     (set! (.-gap     s) (str gap "px")))
+    (when padding (set! (.-padding s) (str padding "px")))
+    (append-children! n children)
+    n))
 
 (defmethod render-component :wun/Text [_ {:keys [variant]} children]
-  (let [class (case variant
-                :h1 "wun-text wun-text--h1"
-                :h2 "wun-text wun-text--h2"
-                "wun-text wun-text--body")
-        tag   (case variant
-                :h1 :h1
-                :h2 :h2
-                :p)]
-    (into [tag {:class class}] (render-children children))))
+  (let [tag (case variant :h1 "h1" :h2 "h2" "p")
+        n   (el tag)]
+    (set! (.-className n)
+          (case variant
+            :h1 "wun-text wun-text--h1"
+            :h2 "wun-text wun-text--h2"
+            "wun-text wun-text--body"))
+    (append-children! n children)
+    n))
 
 (defmethod render-component :wun/Button [_ {:keys [on-press]} children]
-  (let [handler (when on-press
-                  #(dispatch-intent! (:intent on-press) (:params on-press)))]
-    (into [:button.wun-button {:on-click handler :type "button"}]
-          (render-children children))))
+  (let [n (el "button")]
+    (set! (.-className n) "wun-button")
+    (.setAttribute n "type" "button")
+    (when on-press
+      (.addEventListener n "click"
+        (fn [_] (dispatch-intent! (:intent on-press) (:params on-press)))))
+    (append-children! n children)
+    n))
 
 (defn render-node [node]
   (cond
     (nil? node)     nil
-    (string? node)  node
-    (number? node)  (str node)
-    (boolean? node) (str node)
+    (string? node)  (.createTextNode js/document node)
+    (number? node)  (.createTextNode js/document (str node))
+    (boolean? node) (.createTextNode js/document (str node))
     (vector? node)
-    (if-let [tag (component-tag node)]
-      (let [[props children] (props+children node)]
-        [render-component tag props children])
-      (into [:<>] (render-children node)))
-    :else (str node)))
+    (let [tag (first node)]
+      (if (keyword? tag)
+        (let [[props children] (props+children node)]
+          (render-component tag props children))
+        ;; Plain seq of nodes -> wrap in a fragment-y div.
+        (let [n (el "div")]
+          (.setAttribute n "data-wun-fragment" "")
+          (append-children! n node)
+          n)))
+    :else (.createTextNode js/document (str node))))
 
-(defn app []
-  (if-let [tree @tree-state]
-    [render-node tree]
-    [:p.wun-text.wun-text--body "Waiting for first patch from server..."]))
+(defn- mount-tree! [tree]
+  (when-let [root (app-el)]
+    (set! (.-innerHTML root) "")
+    (when-some [n (render-node tree)]
+      (.appendChild root n))))
+
+;; React to mirror updates.
+(add-watch tree-state ::mount
+  (fn [_ _ _ new-tree] (mount-tree! new-tree)))
+
+;; ---------------------------------------------------------------------------
+;; Patch application. Phase 0 only honours :replace at root.
+
+(defn- apply-patch! [{:keys [op path value]}]
+  (case op
+    :replace (if (empty? path)
+               (reset! tree-state value)
+               (js/console.warn "wun: non-root :replace not implemented" (clj->js path)))
+    (js/console.warn "wun: unsupported op" (str op))))
+
+(defn- apply-envelope! [{:keys [patches status error]}]
+  (when (= status :error)
+    (js/console.error "wun: server error" (clj->js error)))
+  (doseq [p patches] (apply-patch! p)))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE wiring.
@@ -142,23 +167,18 @@
       (fn [ev]
         (set-status! "connected")
         (apply-envelope! (str->t (.-data ev)))))
+    (.addEventListener src "open"
+      (fn [_] (set-status! "connected")))
     (.addEventListener src "error"
       (fn [_] (set-status! "disconnected (browser will retry)")))
     (reset! es src)))
 
 ;; ---------------------------------------------------------------------------
-;; Mount.
-
-(defonce ^:private root (atom nil))
-
-(defn- mount! []
-  (when-not @root
-    (reset! root (rdc/create-root (.getElementById js/document "app"))))
-  (rdc/render @root [app]))
+;; Entry points.
 
 (defn ^:export init []
-  (mount!)
   (start-sse!))
 
 (defn ^:export after-reload []
-  (mount!))
+  ;; Re-mount with current state so dev reload survives.
+  (mount-tree! @tree-state))
