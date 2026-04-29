@@ -1,11 +1,15 @@
-;; Phase 0/1.A deps: Maven-Central-only so the spike runs without Clojars.
-;; Pedestal moves in at phase 1.D (see wun.server.http for context).
+;; Phase 1.D: Pedestal interceptor chain on Jetty.
+;; Wire format and intent semantics are unchanged from the JDK
+;; HttpServer transport that came before; only the transport differs.
 
-{:paths ["src"]
- :deps  {org.clojure/clojure       {:mvn/version "1.12.0"}
-         org.clojure/core.async    {:mvn/version "1.6.681"}
-         com.cognitect/transit-clj {:mvn/version "1.0.333"}
-         wun/shared                {:local/root "../wun-shared"}}
+{:paths ["src" "resources"]
+ :deps  {org.clojure/clojure            {:mvn/version "1.12.0"}
+         org.clojure/core.async         {:mvn/version "1.6.681"}
+         com.cognitect/transit-clj      {:mvn/version "1.0.333"}
+         io.pedestal/pedestal.service   {:mvn/version "0.7.1"}
+         io.pedestal/pedestal.jetty     {:mvn/version "0.7.1"}
+         ch.qos.logback/logback-classic {:mvn/version "1.5.6"}
+         wun/shared                     {:local/root "../wun-shared"}}
 
  :aliases
  {:dev {:extra-paths ["dev"]}
