@@ -1,0 +1,13 @@
+{
+  "name": "wun-web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "watch": "shadow-cljs watch app",
+    "compile": "shadow-cljs compile app",
+    "release": "shadow-cljs release app"
+  },
+  "devDependencies": {
+    "shadow-cljs": "2.28.20"
+  }
+}

@@ -1,28 +1,11 @@
-;; Phase 0 build setup: cljs.main directly off Maven Central.
-;; The brief calls for shadow-cljs; that lives on Clojars and the spike
-;; sandbox can't reach it. shadow-cljs slots in at phase 1 -- the source
-;; tree is unchanged, only the build driver swaps.
+;; Phase 1.D-shadow-cljs: shadow-cljs reads its classpath from deps.edn
+;; via `:deps true` in shadow-cljs.edn, so this file is the source of
+;; truth for cljs library deps. Build/watch invocation lives in
+;; package.json scripts (shadow-cljs is npm-launchable).
 
 {:paths ["src"]
  :deps  {org.clojure/clojure        {:mvn/version "1.12.0"}
          org.clojure/clojurescript  {:mvn/version "1.11.132"}
          com.cognitect/transit-cljs {:mvn/version "0.8.280"}
-         wun/shared                 {:local/root "../wun-shared"}}
-
- :aliases
- {:build
-  {:main-opts ["-m" "cljs.main"
-               "--target"        "browser"
-               "--output-dir"    "public/js"
-               "--output-to"     "public/js/main.js"
-               "--optimizations" "simple"
-               "--compile"       "wun.web.core"]}
-
-  :watch
-  {:main-opts ["-m" "cljs.main"
-               "--target"        "browser"
-               "--output-dir"    "public/js"
-               "--output-to"     "public/js/main.js"
-               "--optimizations" "none"
-               "--watch"         "src"
-               "--compile"       "wun.web.core"]}}}
+         thheller/shadow-cljs       {:mvn/version "2.28.20"}
+         wun/shared                 {:local/root "../wun-shared"}}}

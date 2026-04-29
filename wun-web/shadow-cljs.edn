@@ -1,0 +1,13 @@
+;; shadow-cljs config. Pulls library deps from deps.edn (`:deps true`).
+
+{:source-paths ["src"]
+ :deps         true
+ :dev-http     {8081 "public"}
+
+ :builds
+ {:app
+  {:target     :browser
+   :output-dir "public/js"
+   :asset-path "/js"
+   :modules    {:main {:init-fn wun.web.core/init}}
+   :devtools   {:after-load wun.web.core/after-reload}}}}
