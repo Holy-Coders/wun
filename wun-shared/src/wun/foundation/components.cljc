@@ -37,3 +37,14 @@
    :fallback :web
    :ios      "WunButton"
    :android  "WunButton"})
+
+(defcomponent :wun/WebFrame
+  {:since    1
+   :schema   [:map
+              [:src     {:optional true} :string]
+              [:missing {:optional true} :keyword]
+              [:reason  {:optional true} :string]]
+   :loading  :inherit
+   :fallback :none
+   :ios      "WunWebFrame"
+   :android  "WunWebFrame"})

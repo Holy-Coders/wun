@@ -207,6 +207,16 @@ identically.
     intents tagged with timestamps; periodic JS-interval GC drops
     entries older than 30 s; bootstrap-frame detection (a
     `:replace` at root) clears pending across reconnect.
+  - **1.F** capability negotiation. Client builds a caps map from
+    its registered web renderers and sends `?caps=wun/Stack@1,...`
+    on the SSE URL (EventSource can't set custom headers; native
+    clients in phase 2 use `X-Wun-Capabilities`). Server parses
+    per-connection, applies `wun.capabilities/substitute` to the
+    rendered tree before diffing. Unsupported subtrees collapse to
+    `[:wun/WebFrame {:missing <kw>}]` at the smallest containing
+    level; the web client renders WebFrame as a placeholder
+    today, and the iOS/Android phases swap in a real Hotwire
+    Native frame.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.

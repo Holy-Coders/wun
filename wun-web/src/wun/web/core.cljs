@@ -6,6 +6,8 @@
    populate the open registries on load."
   (:require [cognitect.transit  :as transit]
             [reagent.dom.client :as rdc]
+            [wun.capabilities   :as capabilities]
+            [wun.components     :as components]
             [wun.web.intent-bus :as bus]
             [wun.web.renderers  :as renderers]
             ;; populate registries:
@@ -48,9 +50,21 @@
 (defonce ^:private es (atom nil))
 (defonce ^:private was-connected? (atom false))
 
+(defn- current-caps
+  "Build the capability map from registered web renderers; the version
+   for each comes from the shared component registry's :since."
+  []
+  (->> (renderers/registered)
+       (map (fn [k] [k (or (:since (components/lookup k)) 1)]))
+       (into {})))
+
+(defn- caps-url []
+  (str server-base "/wun?caps=" (js/encodeURIComponent
+                                 (capabilities/serialize (current-caps)))))
+
 (defn- start-sse! []
   (when-let [old @es] (.close old))
-  (let [src (js/EventSource. (str server-base "/wun"))]
+  (let [src (js/EventSource. (caps-url))]
     (.addEventListener src "patch"
       (fn [ev]
         (when-not @was-connected?

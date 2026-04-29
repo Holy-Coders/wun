@@ -42,3 +42,26 @@
                           (bus/dispatch! (:intent on-press)
                                          (:params on-press))))}]
           children)))
+
+;; :wun/WebFrame -- the capability fallback. The server emits this in
+;; place of any subtree containing components the client doesn't
+;; advertise. Phase 2 (iOS / Android) renders this as a real
+;; Hotwire-Native iframe; on web today it's a styled placeholder
+;; since web is the one platform that can render everything in the
+;; vocabulary anyway.
+
+(r/register! :wun/WebFrame
+  (fn [{:keys [src missing reason]} _children]
+    [:div.wun-webframe
+     {:style {:padding         "12px 14px"
+              :border          "1px dashed currentColor"
+              :border-radius   "8px"
+              :font            "13px ui-monospace, monospace"
+              :opacity         0.7}}
+     [:strong "WebFrame fallback"]
+     (when missing
+       [:span " — missing renderer for " [:code (str missing)]])
+     (when reason
+       [:span " — " reason])
+     (when src
+       [:span " — src=" [:code src]])]))

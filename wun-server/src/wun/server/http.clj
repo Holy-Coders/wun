@@ -31,6 +31,7 @@
             [io.pedestal.http.route :as route]
             [io.pedestal.http.sse  :as sse]
             [io.pedestal.interceptor :as interceptor]
+            [wun.capabilities      :as capabilities]
             [wun.diff              :as diff]
             [wun.intents           :as intents]
             [wun.screens           :as screens]
@@ -47,15 +48,18 @@
   (screens/render :counter/main @state/app-state))
 
 (defn- broadcast-to-channel!
-  "Diff `ch`'s prior tree against the current tree and enqueue a patch
-   envelope iff there are patches or an intent to resolve. Always
-   carries the current screen state so the client can mirror it for
-   optimistic prediction. Updates the stored prior on successful
+  "Diff `ch`'s prior tree against the per-connection-substituted current
+   tree and enqueue a patch envelope iff there are patches or an
+   intent to resolve. Capability substitution happens per-channel
+   because two clients may advertise different caps; their patches
+   diverge accordingly. Updates the stored prior on successful
    enqueue. On offer! failure, evicts the connection iff its channel
    has actually closed (so transient buffer-full conditions don't drop
    slow-but-alive clients)."
   [ch resolves-intent]
-  (let [tree    (current-tree)
+  (let [raw     (current-tree)
+        caps    (state/caps ch)
+        tree    (capabilities/substitute raw caps)
         prior   (state/prior-tree ch)
         patches (diff/diff prior tree)]
     (when (or (seq patches) resolves-intent)
@@ -84,13 +88,21 @@
 ;; SSE
 
 (defn- on-stream-ready
-  "Called by Pedestal when an SSE connection is ready. Register the
-   channel and push the initial frame through the regular broadcast
-   path -- diff(nil, current) yields a full :replace at root."
+  "Called by Pedestal when an SSE connection is ready. Reads the
+   client's advertised capabilities from the `caps` query parameter
+   (EventSource can't set custom headers; native clients in phase 2
+   will use `X-Wun-Capabilities`). Registers the channel along with
+   parsed caps, then pushes the initial frame through the regular
+   broadcast path -- diff(nil, current-substituted) yields a full
+   :replace at root, with any unsupported subtrees already replaced
+   by [:wun/WebFrame {...}]."
   [event-ch ctx]
-  (state/add-connection! event-ch)
-  (broadcast-to-channel! event-ch nil)
-  ctx)
+  (let [caps-str (get-in ctx [:request :query-params :caps])
+        caps     (capabilities/parse caps-str)]
+    (state/add-connection! event-ch caps)
+    (log/debugf "wun: connected with caps %s" (pr-str caps))
+    (broadcast-to-channel! event-ch nil)
+    ctx))
 
 ;; ---------------------------------------------------------------------------
 ;; Intent endpoint
