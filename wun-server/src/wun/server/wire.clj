@@ -1,7 +1,6 @@
 (ns wun.server.wire
-  "Wire format helpers. Phase 0 only emits full-tree :replace patches at root;
-   future phases will compute structural diffs against a per-connection
-   memoized prior tree."
+  "Wire format helpers. Phase 1.B onward, patches come from wun.diff;
+   this namespace is just transit serialisation + envelope construction."
   (:require [cognitect.transit :as transit])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
@@ -16,11 +15,10 @@
         r  (transit/reader in :json)]
     (transit/read r)))
 
-(defn replace-root-envelope
-  "Build a patch envelope that replaces the entire UI tree at root.
-   Optionally tags the envelope with the intent UUID it resolves."
-  ([tree] (replace-root-envelope tree nil))
-  ([tree resolves-intent]
-   (cond-> {:patches [{:op :replace :path [] :value tree}]
-            :status  :ok}
+(defn patch-envelope
+  "Build the SSE envelope shape: a (possibly empty) `:patches` vector,
+   `:status :ok`, optionally tagged with the intent UUID it resolves."
+  ([patches] (patch-envelope patches nil))
+  ([patches resolves-intent]
+   (cond-> {:patches (vec patches) :status :ok}
      resolves-intent (assoc :resolves-intent resolves-intent))))

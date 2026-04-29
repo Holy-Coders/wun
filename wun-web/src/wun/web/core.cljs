@@ -7,6 +7,7 @@
    sibling namespaces; this file only wires SSE + state + mount.
    Side-effecting requires populate the registries on load."
   (:require [cognitect.transit :as transit]
+            [wun.diff          :as diff]
             [wun.web.renderers :as renderers]
             ;; populate registries:
             wun.foundation.components
@@ -44,20 +45,15 @@
       (renderers/mount-tree! root tree))))
 
 ;; ---------------------------------------------------------------------------
-;; Patch application -- phase 0/1.A only honours :replace at root.
-;; Phase 1.B introduces path-aware :replace / :insert / :remove.
-
-(defn- apply-patch! [{:keys [op path value]}]
-  (case op
-    :replace (if (empty? path)
-               (reset! tree-state value)
-               (js/console.warn "wun: non-root :replace not implemented" (clj->js path)))
-    (js/console.warn "wun: unsupported op" (str op))))
+;; Patch application -- delegates to the shared cljc differ. Phase 1.B
+;; honours :replace / :insert / :remove at any path; phase 1.D will
+;; add prop-aware ops.
 
 (defn- apply-envelope! [{:keys [patches status error]}]
   (when (= status :error)
     (js/console.error "wun: server error" (clj->js error)))
-  (doseq [p patches] (apply-patch! p)))
+  (when (seq patches)
+    (swap! tree-state diff/apply-patches patches)))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE wiring

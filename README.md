@@ -50,9 +50,17 @@ shared code:
   registry (`wun.web.renderers`), with `:wun/*` DOM bindings split out
   to `wun.web.foundation`.
 
-What's still phase 1+: tree diffing (only `:replace`-at-root today),
-optimistic UI on web, default loading/error/skeletons, capability
-negotiation, native clients, WebFrame fallback, devtools.
+Slice 1.B then promotes the wire from "full-tree replace each frame"
+to real structural diffing. Server keeps a per-connection memoized
+prior tree; on each broadcast it diffs the current tree against the
+prior and emits only `:replace` / `:insert` / `:remove` patches at
+the smallest path that changed. Frame size for a single counter
+increment dropped from ~673 B (full tree) to ~169 B (one deep
+`:replace`).
+
+What's still phase 1+: optimistic UI on web (run morphs locally;
+reconcile via `:resolves-intent`), default loading/error/skeletons,
+capability negotiation, native clients, WebFrame fallback, devtools.
 
 ### Run it
 
@@ -160,7 +168,8 @@ identically.
   - **1.A** open registries via shared `defcomponent`/`defscreen`/`definent`.
     *Done.*
   - **1.B** tree diffing per connection; path-aware patch ops on the
-    client.
+    client. Diff + apply live in shared `wun.diff` (cljc) so producer
+    and consumer can't drift. *Done.*
   - **1.C** shared `.cljc` morphs run on web for optimistic UI;
     reconciliation via `:resolves-intent`.
   - **1.D** swap in Pedestal + shadow-cljs + reagent + Malli once

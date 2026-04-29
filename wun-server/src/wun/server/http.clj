@@ -12,6 +12,7 @@
    per-connection core.async channel. Acceptable for a phase-0 demo; phase
    1 swaps to Pedestal/Jetty NIO."
   (:require [clojure.core.async :as a]
+            [wun.diff           :as diff]
             [wun.intents        :as intents]
             [wun.screens        :as screens]
             [wun.server.state   :as state]
@@ -60,6 +61,25 @@
     (.write out bs)
     (.flush out)))
 
+(defn- current-tree []
+  ;; TODO(phase 1.B+): route by request path; for now, one screen.
+  (screens/render :counter/main @state/app-state))
+
+(defn- broadcast-to-channel!
+  "Diff `ch`'s prior tree against the current tree and enqueue a patch
+   envelope iff there are patches or an intent to resolve. Updates the
+   stored prior on successful enqueue. New connections register with
+   prior = nil; `diff/diff` returns a full :replace-at-root in that
+   case, so the initial frame falls out of the same code path."
+  [ch resolves-intent]
+  (let [tree    (current-tree)
+        prior   (state/prior-tree ch)
+        patches (diff/diff prior tree)]
+    (when (or (seq patches) resolves-intent)
+      (let [env (wire/patch-envelope patches resolves-intent)]
+        (when (a/offer! ch env)
+          (state/update-prior-tree! ch tree))))))
+
 (defn- handle-sse [^HttpExchange ex]
   (when (= "OPTIONS" (.getRequestMethod ex))
     (write-empty! ex 204))
@@ -73,11 +93,11 @@
   (let [conn-ch (a/chan 32)
         out    (.getResponseBody ex)]
     (state/add-connection! conn-ch)
+    ;; Push the initial frame through the same broadcast path; diff
+    ;; against the just-registered nil prior produces full :replace at
+    ;; root. The handler-thread loop below picks it off the channel.
+    (broadcast-to-channel! conn-ch nil)
     (try
-      ;; Kick the connection by emitting the current tree.
-      (emit-frame! out (wire/replace-root-envelope
-                        (screens/render :counter/main @state/app-state)))
-      ;; Drain envelopes until disconnect.
       (loop []
         (when-let [env (a/<!! conn-ch)]
           (emit-frame! out env)
@@ -90,19 +110,13 @@
         (.close ex)))))
 
 (defn broadcast!
-  "Re-render the tree and enqueue an envelope on every connection's queue.
-   Returns the number of channels written to."
+  "Diff against every connection's prior tree and enqueue per-channel
+   patch envelopes. Connections that haven't materially diverged from
+   the current tree are skipped unless `resolves-intent` is set."
   ([] (broadcast! nil))
   ([resolves-intent]
-   (let [env (wire/replace-root-envelope
-              (screens/render :counter/main @state/app-state)
-              resolves-intent)]
-     (reduce (fn [n ch]
-               (if (a/offer! ch env)
-                 (inc n)
-                 n))
-             0
-             @state/connections))))
+   (doseq [ch (keys @state/connections)]
+     (broadcast-to-channel! ch resolves-intent))))
 
 ;; ---------------------------------------------------------------------------
 ;; Intent endpoint.
@@ -116,11 +130,8 @@
       (= "POST" method)
       (let [raw      (slurp (.getRequestBody ex) :encoding "UTF-8")
             envelope (wire/read-transit-json raw)
-            {:keys [intent params id]} envelope
-            before   @state/app-state
-            after    (intents/apply-intent before intent params)]
-        (when (not= before after)
-          (reset! state/app-state after))
+            {:keys [intent params id]} envelope]
+        (swap! state/app-state intents/apply-intent intent params)
         (broadcast! id)
         (write-bytes! ex 200 "application/transit+json"
                       (utf8 (wire/write-transit-json
