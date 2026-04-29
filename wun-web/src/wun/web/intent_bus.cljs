@@ -84,15 +84,22 @@
 ;; Public dispatch + reconcile
 
 (defn dispatch!
-  "Optimistically fire `intent` with `params`. Appends a pending entry,
-   recomputes the predicted display, and POSTs the envelope to the
-   server. Returns the intent id."
+  "Optimistically fire `intent` with `params`. Validates params against
+   the intent's :params schema first; on failure, logs a warning and
+   drops the intent without optimistic prediction or POST. On success,
+   appends a pending entry, recomputes the predicted display, and
+   POSTs the envelope to the server. Returns the intent id, or nil
+   when validation rejected the call."
   [intent params]
-  (let [id (random-uuid)]
-    (swap! pending conj {:id id :intent intent :params (or params {})})
-    (recompute!)
-    (post-intent! intent params id)
-    id))
+  (let [params (or params {})]
+    (if-let [err (intents/validate-params intent params)]
+      (do (js/console.warn "wun: invalid intent params" (clj->js err))
+          nil)
+      (let [id (random-uuid)]
+        (swap! pending conj {:id id :intent intent :params params})
+        (recompute!)
+        (post-intent! intent params id)
+        id))))
 
 (defn apply-envelope!
   "Reconcile a server envelope: apply patches against confirmed-tree,

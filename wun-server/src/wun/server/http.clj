@@ -135,11 +135,18 @@
       (let [raw      (slurp (.getRequestBody ex) :encoding "UTF-8")
             envelope (wire/read-transit-json raw)
             {:keys [intent params id]} envelope]
-        (swap! state/app-state intents/apply-intent intent params)
-        (broadcast! id)
-        (write-bytes! ex 200 "application/transit+json"
-                      (utf8 (wire/write-transit-json
-                             {:status :ok :resolves-intent id}))))
+        (if-let [err (intents/validate-params intent params)]
+          (write-bytes! ex 400 "application/transit+json"
+                        (utf8 (wire/write-transit-json
+                               {:status :error
+                                :resolves-intent id
+                                :error err})))
+          (do
+            (swap! state/app-state intents/apply-intent intent params)
+            (broadcast! id)
+            (write-bytes! ex 200 "application/transit+json"
+                          (utf8 (wire/write-transit-json
+                                 {:status :ok :resolves-intent id}))))))
 
       :else
       (write-empty! ex 405))))

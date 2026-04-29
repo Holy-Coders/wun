@@ -184,9 +184,12 @@ identically.
     reconciliation via `:resolves-intent`. Envelope carries `:state`
     so the client mirrors the screen state and can run the same
     `wun.intents/apply-intent` morphs the server runs. *Done.*
-  - **1.D** swap in Pedestal + shadow-cljs + reagent + Malli once
-    Clojars is reachable; promote `defcomponent` to a real macro with
-    schema validation.
+  - **1.D-Malli** intent `:params` schemas validate at both wire
+    boundaries; server returns 400 with a humanised explanation,
+    client logs and drops the call before optimistic prediction or
+    POST. *Done.*
+  - **1.D-Pedestal/reagent/shadow-cljs** swap in the brief's full
+    server/build/render stack now that Clojars is reachable.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
