@@ -1,12 +1,16 @@
 (ns wun.web.renderers
-  "Open web renderer registry and the Hiccup -> DOM driver. Each
-   component keyword maps to a fn `(props children-dom-nodes) -> dom-node`.
-   Framework code and user code register through `register!` identically.
+  "Open web renderer registry. Each component keyword maps to a fn
+   `(props children-as-reagent-hiccup) -> reagent-hiccup`. Framework
+   code and user code register through `register!` identically; the
+   registry doesn't distinguish the two.
 
-   `render-node` walks an incoming Hiccup tree, recursively materialising
-   children first, then dispatching to the registered renderer for the
-   tag. Anything not in the registry falls through to a visible
-   placeholder; phase 2 swaps that for a Hotwire WebFrame fallback.")
+   `render-node` walks an incoming Wun Hiccup tree (which uses
+   namespaced component keywords like :wun/Stack) and produces a
+   reagent Hiccup tree (which uses plain HTML keywords like :div).
+   Reagent's React reconciler then handles the actual DOM updates -- so
+   moving from the previous hand-rolled vanilla-DOM applicator to
+   reagent doesn't change the registry contract, only what the
+   registered fn returns.")
 
 (defonce registry (atom {}))
 
@@ -30,45 +34,27 @@
       [{}          (rest v)])))
 
 (defn- render-children [children]
-  (->> children
-       (map render-node)
-       (filter some?)
-       vec))
-
-(defn- placeholder [tag children]
-  (let [n (.createElement js/document "div")]
-    (set! (.-className n) "wun-unknown")
-    (set! (.-textContent n) (str "[unknown component " tag "]"))
-    (doseq [c (render-children children)] (.appendChild n c))
-    n))
+  (mapv render-node children))
 
 (defn render-node
-  "Hiccup-shaped node -> DOM node. Strings and numbers become text
-   nodes; vectors with a keyword head dispatch through the registry."
+  "Wun Hiccup -> reagent Hiccup. Strings, numbers, and booleans pass
+   through as text. Vectors with a keyword head dispatch through the
+   registry; unknown components fall back to a visible placeholder
+   (phase-2 swaps that for a Hotwire WebFrame fallback)."
   [node]
   (cond
     (nil? node)     nil
-    (string? node)  (.createTextNode js/document node)
-    (number? node)  (.createTextNode js/document (str node))
-    (boolean? node) (.createTextNode js/document (str node))
+    (string? node)  node
+    (number? node)  (str node)
+    (boolean? node) (str node)
     (vector? node)
     (let [tag (first node)]
       (if (keyword? tag)
         (let [[props children] (props+children node)
-              kids (render-children children)]
+              kids             (render-children children)]
           (if-let [f (lookup tag)]
             (f props kids)
-            (placeholder tag children)))
-        ;; Plain seq -> wrap in a fragment-y div.
-        (let [n (.createElement js/document "div")]
-          (.setAttribute n "data-wun-fragment" "")
-          (doseq [c (render-children node)] (.appendChild n c))
-          n)))
-    :else (.createTextNode js/document (str node))))
-
-(defn mount-tree!
-  "Replace the contents of `^js root-el` with the rendered `tree`."
-  [^js root-el tree]
-  (set! (.-innerHTML root-el) "")
-  (when-some [n (render-node tree)]
-    (.appendChild root-el n)))
+            (into [:div.wun-unknown {} (str "[unknown component " tag "]")] kids)))
+        ;; Plain seq -> reagent fragment.
+        (into [:<>] (render-children node))))
+    :else (str node)))

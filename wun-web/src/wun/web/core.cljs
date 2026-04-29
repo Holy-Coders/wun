@@ -1,13 +1,11 @@
 (ns wun.web.core
   "Wun web entry point. Subscribes to the server's SSE patch stream,
-   delegates each envelope to `wun.web.intent-bus`, and mounts whatever
-   the bus produces as `display-tree` to the DOM.
-
-   The optimistic dispatch + reconcile machinery lives in `intent-bus`
-   so renderers (which fire intents from button click handlers) and
-   this file (which feeds incoming envelopes) share one source of
-   truth. Side-effecting requires below populate the open registries."
+   delegates each envelope to `wun.web.intent-bus`, and renders
+   `display-tree` through reagent. The optimistic dispatch + reconcile
+   machinery lives in `intent-bus`. Side-effecting requires below
+   populate the open registries on load."
   (:require [cognitect.transit  :as transit]
+            [reagent.dom.client :as rdc]
             [wun.web.intent-bus :as bus]
             [wun.web.renderers  :as renderers]
             ;; populate registries:
@@ -29,18 +27,20 @@
 (defn- str->t [s] (transit/read reader s))
 
 ;; ---------------------------------------------------------------------------
-;; Mount
+;; Status indicator (outside the reagent root, so we don't fight React over
+;; the #status div)
 
 (defn- ^js status-el [] (.getElementById js/document "status"))
-(defn- ^js app-el    [] (.getElementById js/document "app"))
 
 (defn- set-status! [s]
   (when-let [el (status-el)] (set! (.-textContent el) s)))
 
-(add-watch bus/display-tree ::mount
-  (fn [_ _ _ tree]
-    (when-let [root (app-el)]
-      (renderers/mount-tree! root tree))))
+;; ---------------------------------------------------------------------------
+;; Top-level reagent component. Derefs display-tree (a reagent atom)
+;; so reagent re-renders on every change.
+
+(defn app []
+  (renderers/render-node @bus/display-tree))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE wiring
@@ -61,11 +61,21 @@
     (reset! es src)))
 
 ;; ---------------------------------------------------------------------------
+;; Reagent mount
+
+(defonce ^:private root (atom nil))
+
+(defn- mount! []
+  (when-not @root
+    (reset! root (rdc/create-root (.getElementById js/document "app"))))
+  (rdc/render @root [app]))
+
+;; ---------------------------------------------------------------------------
 ;; Entry points
 
 (defn ^:export init []
+  (mount!)
   (start-sse!))
 
 (defn ^:export after-reload []
-  (when-let [root (app-el)]
-    (renderers/mount-tree! root @bus/display-tree)))
+  (mount!))

@@ -188,8 +188,18 @@ identically.
     boundaries; server returns 400 with a humanised explanation,
     client logs and drops the call before optimistic prediction or
     POST. *Done.*
-  - **1.D-Pedestal/reagent/shadow-cljs** swap in the brief's full
-    server/build/render stack now that Clojars is reachable.
+  - **1.D-Pedestal** server transport runs on Pedestal's
+    interceptor chain on Jetty. SSE via `sse/start-event-stream`,
+    transit-json bodies via `body-params`, custom static interceptor
+    after routing. *Done.*
+  - **1.D-shadow-cljs** build replaces `cljs.main` with shadow-cljs;
+    `:advanced` Closure compilation cuts the bundle from ~2.25 MB
+    to ~533 KB (with reagent + Malli) / ~359 KB (without reagent).
+    *Done.*
+  - **1.D-reagent** foundational `:wun/*` renderers return reagent
+    Hiccup; a single reagent root re-renders when the
+    `display-tree` reagent atom changes, and React's reconciler
+    handles incremental DOM updates. *Done.*
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.

@@ -34,6 +34,7 @@
    Phase 1.D will gate prediction by the intent's `:optimistic?` flag
    and move from a hardcoded screen to path-based routing."
   (:require [cognitect.transit :as transit]
+            [reagent.core      :as r]
             [wun.diff          :as diff]
             [wun.intents       :as intents]
             [wun.screens       :as screens]))
@@ -53,7 +54,9 @@
 (defonce confirmed-state (atom nil))
 (defonce confirmed-tree  (atom nil))
 (defonce pending         (atom []))
-(defonce display-tree    (atom nil))
+;; display-tree is a reagent atom so the top-level component can deref
+;; it reactively; reagent re-renders only when this changes.
+(defonce display-tree    (r/atom nil))
 
 (defn- predicted-state []
   (reduce (fn [s {:keys [intent params]}]
