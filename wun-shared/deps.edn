@@ -1,0 +1,4 @@
+;; wun-shared: cljc library shared between wun-server (clj) and wun-web (cljs).
+;; Pure data + pure-fn registries, no platform deps.
+
+{:paths ["src"]}

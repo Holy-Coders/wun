@@ -1,10 +1,11 @@
-;; Phase 0 deps: Maven-Central-only so the spike runs without Clojars.
-;; Pedestal moves in at phase 1 (see wun.server.http for context).
+;; Phase 0/1.A deps: Maven-Central-only so the spike runs without Clojars.
+;; Pedestal moves in at phase 1.D (see wun.server.http for context).
 
 {:paths ["src"]
  :deps  {org.clojure/clojure       {:mvn/version "1.12.0"}
          org.clojure/core.async    {:mvn/version "1.6.681"}
-         com.cognitect/transit-clj {:mvn/version "1.0.333"}}
+         com.cognitect/transit-clj {:mvn/version "1.0.333"}
+         wun/shared                {:local/root "../wun-shared"}}
 
  :aliases
  {:dev {:extra-paths ["dev"]}

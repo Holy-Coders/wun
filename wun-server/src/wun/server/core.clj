@@ -1,11 +1,14 @@
 (ns wun.server.core
-  "Wun phase 0 server entry point. The HTTP transport lives in
-   wun.server.http (JDK HttpServer). The brief calls for Pedestal; this
-   sandbox can't reach Clojars, so phase 0 ships with a portable transport
-   and phase 1 substitutes Pedestal once Clojars is reachable. The wire
-   format and intent semantics are unchanged."
-  (:require [wun.server.http    :as http]
-            [wun.server.intents :as intents])
+  "Wun server entry point. HTTP transport lives in wun.server.http
+   (JDK HttpServer; Pedestal lands at phase 1.D once Clojars is
+   reachable). All component / screen / intent registries live in
+   wun-shared and are populated by namespace load -- requiring
+   `wun.foundation.components` registers the `:wun/*` vocabulary;
+   requiring `wun.app.counter` registers the demo screen + intents."
+  (:require [wun.server.http :as http]
+            ;; Side-effecting requires populate the open registries.
+            wun.foundation.components
+            wun.app.counter)
   (:gen-class))
 
 (defonce ^:private server (atom nil))
@@ -13,7 +16,6 @@
 (defn start!
   ([] (start! {}))
   ([opts]
-   (intents/register-defaults!)
    (when @server
      (http/stop! @server))
    (reset! server (http/start! opts))

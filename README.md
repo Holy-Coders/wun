@@ -22,26 +22,37 @@ This is a **monorepo** for the four sub-projects called for in the brief.
 Each subdirectory is self-contained and can be split into its own repo at
 any time with `git subtree split`.
 
-| dir            | language       | status                       |
-|----------------|----------------|------------------------------|
-| `wun-server/`  | Clojure        | phase 0 spike                |
-| `wun-web/`     | ClojureScript  | phase 0 spike                |
-| `wun-ios/`     | Swift package  | empty stub (phase 2)         |
-| `wun-android/` | Kotlin lib     | empty stub (phase 3)         |
+| dir            | language       | status                                 |
+|----------------|----------------|----------------------------------------|
+| `wun-shared/`  | Clojure (cljc) | open registries shared on both sides   |
+| `wun-server/`  | Clojure        | phase 0/1.A                            |
+| `wun-web/`     | ClojureScript  | phase 0/1.A                            |
+| `wun-ios/`     | Swift package  | empty stub (phase 2)                   |
+| `wun-android/` | Kotlin lib     | empty stub (phase 3)                   |
 
-## Phase 0 deliverable: counter spike
+## Status: phase 0 + slice 1.A landed
 
-The smallest end-to-end loop that proves the architecture:
+Phase 0 wired the smallest end-to-end loop: server is the source of
+truth, emits patch envelopes over SSE, web client renders, intents POST
+back. Slice 1.A promotes the macros and registries to first-class
+shared code:
 
-1. JDK `HttpServer` + manual SSE on `/wun`, plus a `definent` registry.
-2. ClojureScript client subscribes to the SSE stream, mirrors the tree,
-   renders Hiccup to vanilla DOM, dispatches intents on button press.
-3. Server applies the morph and re-broadcasts the full tree to every
-   connected client.
+- `wun-shared/` carries `defcomponent` / `defscreen` / `definent` plus
+  the open registries each one feeds.
+- The foundational `:wun/Stack` / `:wun/Text` / `:wun/Button`
+  vocabulary is registered via `defcomponent` -- the same API user
+  code uses. There is no privileged path between framework and user.
+- The counter app (`:counter/main` screen + `:counter/inc/dec/reset`
+  intents) is ordinary user-namespace code in `wun.app.counter`,
+  registered through the same `defscreen` / `definent` calls.
+- The server's render pipeline reads from the screen registry; the
+  web client's renderer dispatches via an open per-platform renderer
+  registry (`wun.web.renderers`), with `:wun/*` DOM bindings split out
+  to `wun.web.foundation`.
 
-That is *all* that's wired up right now. No diffing, no optimistic UI, no
-native renderers, no fallback, no capability negotiation. Each of those is
-a phase-1+ deliverable.
+What's still phase 1+: tree diffing (only `:replace`-at-root today),
+optimistic UI on web, default loading/error/skeletons, capability
+negotiation, native clients, WebFrame fallback, devtools.
 
 ### Run it
 
@@ -60,13 +71,19 @@ broadcasts the new tree to all SSE connections.
 
 ### What's verified end-to-end
 
-- `GET /wun` emits a `:replace`-at-root patch envelope on connect.
-- `POST /intent` applies the morph and broadcasts the new tree to every
-  open SSE connection. Multi-client broadcast confirmed; both clients see
-  the same `Counter: 0 → 1 → 2` trail.
+- `GET /wun` emits a `:replace`-at-root patch envelope on connect, with
+  a tree built by the registered `:counter/main` screen rendering
+  through the registered `:wun/*` vocabulary.
+- `POST /intent` looks up the intent in the shared registry, applies
+  the morph, and broadcasts the new tree to every open SSE connection.
+  Multi-client broadcast confirmed; both clients see the same trail.
+- Counter trail across `inc inc inc dec reset inc`:
+  `0 → 1 → 2 → 3 → 2 → 0 → 1`.
 - Static asset serving with path-traversal protection (`/js/../../etc/passwd`
   → 404).
 - Transit-json round-trips on the wire including `:resolves-intent` UUIDs.
+- cljs build pulls `wun-shared` via `:local/root` and bundles the
+  shared `.cljc` registries plus the foundational and app namespaces.
 
 ### A note on the stack
 
@@ -138,10 +155,17 @@ identically.
 
 ## Phase plan (summary)
 
-- **Phase 0** -- spike. Validate the loop feels right. *(this commit)*
-- **Phase 1** -- server foundations + web client. Swap in Pedestal and
-  reagent. Tree diffing, optimistic UI on web, default
-  loading/error/skeleton, devtools, full registry.
+- **Phase 0** -- spike. Validate the loop feels right. *Done.*
+- **Phase 1** -- server foundations + web client.
+  - **1.A** open registries via shared `defcomponent`/`defscreen`/`definent`.
+    *Done.*
+  - **1.B** tree diffing per connection; path-aware patch ops on the
+    client.
+  - **1.C** shared `.cljc` morphs run on web for optimistic UI;
+    reconciliation via `:resolves-intent`.
+  - **1.D** swap in Pedestal + shadow-cljs + reagent + Malli once
+    Clojars is reachable; promote `defcomponent` to a real macro with
+    schema validation.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
 - **Phase 3** -- Android. Compose renderers, parity with iOS.

@@ -12,8 +12,8 @@
    per-connection core.async channel. Acceptable for a phase-0 demo; phase
    1 swaps to Pedestal/Jetty NIO."
   (:require [clojure.core.async :as a]
-            [wun.server.intents :as intents]
-            [wun.server.render  :as render]
+            [wun.intents        :as intents]
+            [wun.screens        :as screens]
             [wun.server.state   :as state]
             [wun.server.wire    :as wire])
   (:import  [com.sun.net.httpserver HttpServer HttpExchange HttpHandler]
@@ -76,7 +76,7 @@
     (try
       ;; Kick the connection by emitting the current tree.
       (emit-frame! out (wire/replace-root-envelope
-                        (render/counter-screen @state/app-state)))
+                        (screens/render :counter/main @state/app-state)))
       ;; Drain envelopes until disconnect.
       (loop []
         (when-let [env (a/<!! conn-ch)]
@@ -95,7 +95,7 @@
   ([] (broadcast! nil))
   ([resolves-intent]
    (let [env (wire/replace-root-envelope
-              (render/counter-screen @state/app-state)
+              (screens/render :counter/main @state/app-state)
               resolves-intent)]
      (reduce (fn [n ch]
                (if (a/offer! ch env)
