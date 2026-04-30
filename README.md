@@ -251,6 +251,17 @@ identically.
     by "oops" / reset from Swift; the `resolves-intent` UUIDs match
     each dispatch's id, the 400 case lights up `onError` with
     `{n: ["should be an integer"]}`. *Done.*
+  - **2.F** `:wun/WebFrame` fallback. Server emits
+    `[:wun/WebFrame {:missing :wun/Foo :src "/web-frames/wun%2FFoo"}]`
+    when capability negotiation finds an unsupported subtree.
+    Server route `/web-frames/<key>` returns HTML the client
+    displays in a WKWebView via `WunWebFrame.render` (cross-platform
+    SwiftUI/WKWebView bridge for iOS + macOS). `Wun.serverBase`
+    resolves the relative `:src`. `wun.capabilities/substitute`
+    grew an optional `src-builder` so the URL-encoding stays
+    server-side and the cljc stays pure. The HTML is currently a
+    stub diagnostic; rendering the actual subtree via the web
+    cljs renderers is a later-phase improvement. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

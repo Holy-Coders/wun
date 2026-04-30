@@ -67,27 +67,37 @@
 
 (declare substitute)
 
-(defn- substitute-children [v caps]
+(defn- substitute-children [v caps src-builder]
   (let [hp?      (has-props? v)
         props    (when hp? (second v))
         children (if hp? (drop 2 v) (rest v))
         tag      (first v)]
     (into (cond-> [tag] hp? (conj props))
-          (map #(substitute % caps) children))))
+          (map #(substitute % caps src-builder) children))))
 
 (defn substitute
   "Return a tree with any unsupported component subtrees replaced by
    [:wun/WebFrame {:missing <kw>}]. Idempotent on already-substituted
    trees because :wun/WebFrame is required to be in every client's
-   caps list."
-  ([tree] (substitute tree {}))
-  ([tree caps]
+   caps list.
+
+   `src-builder`, when provided, is `(component-keyword) -> string` and
+   adds a `:src` prop pointing at a URL the client can navigate to in
+   a WebFrame. URL encoding is the caller's responsibility (different
+   platforms have different encoding APIs); we keep substitute pure
+   cljc by deferring it."
+  ([tree] (substitute tree {} nil))
+  ([tree caps] (substitute tree caps nil))
+  ([tree caps src-builder]
    (cond
      (not (vector? tree)) tree
 
-     (not (keyword? (first tree))) (mapv #(substitute % caps) tree)
+     (not (keyword? (first tree)))
+     (mapv #(substitute % caps src-builder) tree)
 
      (not (supported? caps (first tree)))
-     [:wun/WebFrame {:missing (first tree)}]
+     (let [tag (first tree)]
+       [:wun/WebFrame (cond-> {:missing tag}
+                        src-builder (assoc :src (src-builder tag)))])
 
-     :else (substitute-children tree caps))))
+     :else (substitute-children tree caps src-builder))))

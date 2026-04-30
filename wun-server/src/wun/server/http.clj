@@ -38,6 +38,7 @@
             [wun.server.state      :as state]
             [wun.server.wire       :as wire])
   (:import  [java.io File]
+            [java.net URLEncoder]
             [java.util.concurrent Executors ScheduledExecutorService TimeUnit]))
 
 ;; ---------------------------------------------------------------------------
@@ -46,6 +47,15 @@
 (defn- current-tree []
   ;; TODO(phase 1.D-routing): pick screen by request path.
   (screens/render :counter/main @state/app-state))
+
+(defn- web-frame-src
+  "Build a relative URL the iOS / Android client can navigate to in a
+   WebFrame to render the component the native client lacks. Keeps
+   the URL pure ASCII via percent-encoding so the namespace `/`
+   survives Pedestal routing."
+  [component-key]
+  (let [piece (str (namespace component-key) "/" (name component-key))]
+    (str "/web-frames/" (URLEncoder/encode piece "UTF-8"))))
 
 (defn- broadcast-to-channel!
   "Diff `ch`'s prior tree against the per-connection-substituted current
@@ -60,7 +70,7 @@
   (let [raw     (current-tree)
         caps    (state/caps ch)
         fmt     (state/fmt ch)
-        tree    (capabilities/substitute raw caps)
+        tree    (capabilities/substitute raw caps web-frame-src)
         prior   (state/prior-tree ch)
         patches (diff/diff prior tree)]
     (when (or (seq patches) resolves-intent)
@@ -158,6 +168,46 @@
         (response fmt 200 {:status :ok :resolves-intent id})))))
 
 ;; ---------------------------------------------------------------------------
+;; WebFrame fallback endpoint.
+;;
+;; When capability negotiation collapses an unsupported subtree to
+;; [:wun/WebFrame {:src "/web-frames/<key>" :missing <kw>}], the
+;; native client navigates to that URL inside a WKWebView (Hotwire
+;; Native on iOS in 2.F+) and the server replies with HTML the user
+;; sees in place of the missing native rendering.
+;;
+;; Phase 2.F ships a stub HTML page acknowledging the fallback. A
+;; later slice can render the actual subtree via the same web cljs
+;; renderers, parameterised by component key, so the WebFrame is a
+;; pixel-perfect facsimile of what the web client would draw.
+
+(defn- web-frame-html [component-key]
+  (str "<!doctype html>"
+       "<html lang='en'><head><meta charset='utf-8'>"
+       "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+       "<title>WebFrame: " component-key "</title>"
+       "<style>"
+       "html,body{margin:0;padding:0;font-family:ui-sans-serif,system-ui,sans-serif;}"
+       "body{padding:24px;color:#222;background:#fafafa;}"
+       ".tag{font-family:ui-monospace,monospace;background:#eaeaea;"
+            "padding:2px 6px;border-radius:4px;}"
+       "</style></head>"
+       "<body>"
+       "<h1>WebFrame fallback</h1>"
+       "<p>The native client doesn't ship a renderer for "
+       "<span class='tag'>:" component-key "</span> yet. "
+       "This HTML, served by wun-server's <code>/web-frames/</code> "
+       "endpoint, fills in until a renderer is registered "
+       "natively.</p>"
+       "</body></html>"))
+
+(defn- web-frame-handler [request]
+  (let [k (get-in request [:path-params :key])]
+    {:status  200
+     :headers {"Content-Type" "text/html; charset=utf-8"}
+     :body    (web-frame-html (or k ""))}))
+
+;; ---------------------------------------------------------------------------
 ;; Static files
 
 (def ^:private mime-types
@@ -213,7 +263,9 @@
    #{["/wun"    :get  (sse/start-event-stream on-stream-ready)
       :route-name :wun-stream]
      ["/intent" :post [(body-params/body-params) intent-handler]
-      :route-name :wun-intent]}))
+      :route-name :wun-intent]
+     ["/web-frames/:key" :get web-frame-handler
+      :route-name :wun-web-frame]}))
 
 ;; ---------------------------------------------------------------------------
 ;; Service lifecycle

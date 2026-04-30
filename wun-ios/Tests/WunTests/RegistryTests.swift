@@ -18,20 +18,17 @@ final class RegistryTests: XCTestCase {
         XCTAssertEqual(r.registered(), ["myapp/Card", "wun/Stack", "wun/Text"])
     }
 
-    func testFoundationRegistersAllPhase2DComponents() {
+    func testFoundationRegistersAllFoundationalComponents() {
         let r = Registry()
         WunFoundation.register(into: r)
         let expected = [
             "wun/Stack", "wun/Text", "wun/Image", "wun/Button",
             "wun/Card", "wun/Avatar", "wun/Input", "wun/List",
-            "wun/Spacer", "wun/ScrollView",
+            "wun/Spacer", "wun/ScrollView", "wun/WebFrame",
         ]
         for tag in expected {
             XCTAssertNotNil(r.lookup(tag), "\(tag) should be registered")
         }
-        // :wun/WebFrame lands in 2.F via Hotwire Native.
-        XCTAssertNil(r.lookup("wun/WebFrame"),
-                     "WebFrame is registered in 2.F; not yet")
     }
 
     /// Renderers are `(props, children) -> AnyView`. We can't easily
@@ -58,5 +55,8 @@ final class RegistryTests: XCTestCase {
         _ = WunSpacer.render(["size": .int(16)],                  [])
         _ = WunScrollView.render([:],                             [.text("scrolled")])
         _ = WunScrollView.render(["direction": .string("horizontal")], [])
+        _ = WunWebFrame.render(["src":     .string("https://example.com/x"),
+                                "missing": .string("wun/Card")], [])
+        _ = WunWebFrame.render([:],                               [])  // diagnostic path
     }
 }

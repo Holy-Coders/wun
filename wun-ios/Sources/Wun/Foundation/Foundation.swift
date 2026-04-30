@@ -22,7 +22,7 @@ public enum WunFoundation {
         registry.register("wun/List",       WunList.render)
         registry.register("wun/Spacer",     WunSpacer.render)
         registry.register("wun/ScrollView", WunScrollView.render)
-        // `:wun/WebFrame` lands in 2.F via Hotwire Native.
+        registry.register("wun/WebFrame",   WunWebFrame.render)
     }
 
     public static func registerDefaults() {

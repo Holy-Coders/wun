@@ -11,7 +11,7 @@
 import Foundation
 
 public enum Wun {
-    public static let version = "0.1.0-phase2d"
+    public static let version = "0.1.0-phase2f"
     public static let supportedOps: Set<PatchOp> = [.replace, .insert, .remove]
 
     /// Called by Button/Input/etc. when an intent is fired in the UI.
@@ -23,4 +23,10 @@ public enum Wun {
     ) -> Void = { intent, _ in
         print("[wun] no intent dispatcher set; dropped \(intent)")
     }
+
+    /// Server origin used for resolving relative URLs in `:wun/WebFrame`
+    /// payloads. The server emits relative `:src` paths
+    /// (e.g. "/web-frames/wun%2FCard"); the WebFrame renderer joins
+    /// them against this base.
+    public static var serverBase: URL?
 }
