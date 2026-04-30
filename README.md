@@ -243,6 +243,14 @@ identically.
     is the global hook Button/Input fire when the user acts; phase
     2.E plugs in a real POST. iOS client now advertises 11 caps; the
     server passes the tree through without substitution. *Done.*
+  - **2.E** action dispatcher: `IntentDispatcher` POSTs JSON envelopes
+    to `/intent` with a generated UUID; on 400, decodes the error
+    envelope and forwards the Malli explanation through an `onError`
+    callback. `dispatcher.install()` swaps the global
+    `Wun.intentDispatcher`. `wun-smoke` now fires inc / by 5 /
+    by "oops" / reset from Swift; the `resolves-intent` UUIDs match
+    each dispatch's id, the 400 case lights up `onError` with
+    `{n: ["should be an integer"]}`. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

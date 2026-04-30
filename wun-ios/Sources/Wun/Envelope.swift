@@ -23,6 +23,29 @@ public struct Envelope: Decodable, Equatable, Sendable {
         case resolvesIntent = "resolves-intent"
     }
 
+    public init(patches: [Patch] = [],
+                status: String,
+                state: JSON? = nil,
+                resolvesIntent: String? = nil,
+                error: JSON? = nil) {
+        self.patches = patches
+        self.status = status
+        self.state = state
+        self.resolvesIntent = resolvesIntent
+        self.error = error
+    }
+
+    /// Custom decoder so error envelopes (which omit `patches`) decode
+    /// successfully against the same shape; we just default to `[]`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.patches        = try c.decodeIfPresent([Patch].self, forKey: .patches) ?? []
+        self.status         = try c.decode(String.self,           forKey: .status)
+        self.state          = try c.decodeIfPresent(JSON.self,    forKey: .state)
+        self.resolvesIntent = try c.decodeIfPresent(String.self,  forKey: .resolvesIntent)
+        self.error          = try c.decodeIfPresent(JSON.self,    forKey: .error)
+    }
+
     /// Decode an envelope from raw JSON bytes.
     public static func decode(_ data: Data) throws -> Envelope {
         try JSONDecoder().decode(Envelope.self, from: data)
