@@ -2,11 +2,13 @@
 // transit-json envelope used on the web:
 //
 //   {
-//     "patches": [{"op":"replace","path":[],"value":<tree>}, ...],
-//     "status":  "ok",
-//     "state":   {"counter": 0},
+//     "patches":      [{"op":"replace","path":[],"value":<tree>}, ...],
+//     "status":       "ok",
+//     "state":        {"counter": 0},
 //     "resolves-intent": "uuid-or-null",
-//     "error":   null
+//     "conn-id":      "uuid",                 // 6.C navigation
+//     "screen-stack": ["counter/main"],       // 6.C navigation
+//     "error":        null
 //   }
 
 import Foundation
@@ -16,22 +18,30 @@ public struct Envelope: Decodable, Equatable, Sendable {
     public let status: String
     public let state: JSON?
     public let resolvesIntent: String?
+    public let connID: String?
+    public let screenStack: [String]?
     public let error: JSON?
 
     enum CodingKeys: String, CodingKey {
         case patches, status, state, error
         case resolvesIntent = "resolves-intent"
+        case connID         = "conn-id"
+        case screenStack    = "screen-stack"
     }
 
     public init(patches: [Patch] = [],
                 status: String,
                 state: JSON? = nil,
                 resolvesIntent: String? = nil,
+                connID: String? = nil,
+                screenStack: [String]? = nil,
                 error: JSON? = nil) {
         self.patches = patches
         self.status = status
         self.state = state
         self.resolvesIntent = resolvesIntent
+        self.connID = connID
+        self.screenStack = screenStack
         self.error = error
     }
 
@@ -39,11 +49,13 @@ public struct Envelope: Decodable, Equatable, Sendable {
     /// successfully against the same shape; we just default to `[]`.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.patches        = try c.decodeIfPresent([Patch].self, forKey: .patches) ?? []
-        self.status         = try c.decode(String.self,           forKey: .status)
-        self.state          = try c.decodeIfPresent(JSON.self,    forKey: .state)
-        self.resolvesIntent = try c.decodeIfPresent(String.self,  forKey: .resolvesIntent)
-        self.error          = try c.decodeIfPresent(JSON.self,    forKey: .error)
+        self.patches        = try c.decodeIfPresent([Patch].self,    forKey: .patches) ?? []
+        self.status         = try c.decode(String.self,              forKey: .status)
+        self.state          = try c.decodeIfPresent(JSON.self,       forKey: .state)
+        self.resolvesIntent = try c.decodeIfPresent(String.self,     forKey: .resolvesIntent)
+        self.connID         = try c.decodeIfPresent(String.self,     forKey: .connID)
+        self.screenStack    = try c.decodeIfPresent([String].self,   forKey: .screenStack)
+        self.error          = try c.decodeIfPresent(JSON.self,       forKey: .error)
     }
 
     /// Decode an envelope from raw JSON bytes.

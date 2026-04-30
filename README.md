@@ -16,20 +16,50 @@ frames seamlessly via Hotwire Native.
 Mental model: Datastar's data flow + Hotwire's transport + Clojure's
 code-as-data + SDUI's component vocabulary.
 
+## Install
+
+```bash
+# from a clone:
+./install.sh
+
+# or one-liner (once the repo is publicly hosted on GitHub):
+curl -fsSL https://raw.githubusercontent.com/Holy-Coders/wun/master/install.sh | bash
+```
+
+The installer ensures babashka is on PATH, then symlinks `bin/wun` into
+`/usr/local/bin/` (or `~/.local/bin/` as a fallback). Re-running is safe.
+
+## Quick start (`wun` CLI)
+
+```bash
+wun doctor                       # check java/clojure/swift/gradle/node/bb
+wun dev                          # server + shadow-cljs watch (Ctrl-C stops both)
+wun run ios                      # in another terminal, open the macOS demo
+wun add component myapp/Card     # scaffold a multi-platform component
+wun add screen    myapp/profile  # scaffold a screen .cljc
+wun add intent    myapp/login    # scaffold an intent .cljc
+wun new my-app                   # copy templates/component-pack/ as a sibling dir
+```
+
+Re-running any generator is idempotent. `wun help` lists every subcommand.
+
 ## Repo layout
 
-This is a **monorepo** for the four sub-projects called for in the brief.
+This is a **monorepo** for the cross-platform pieces called for in the brief.
 Each subdirectory is self-contained and can be split into its own repo at
 any time with `git subtree split`.
 
-| dir                | language       | status                                  |
-|--------------------|----------------|-----------------------------------------|
-| `wun-shared/`      | Clojure (cljc) | open registries shared on both sides    |
-| `wun-server/`      | Clojure        | phase 0 → 2.H                           |
-| `wun-web/`         | ClojureScript  | phase 0 → 1.F                           |
-| `wun-ios/`         | Swift package  | phase 2.A → 2.H                         |
-| `wun-ios-example/` | Swift package  | reference user-component (2.H demo)     |
-| `wun-android/`     | Kotlin lib     | empty stub (phase 3)                    |
+| dir                    | language       | role                                |
+|------------------------|----------------|-------------------------------------|
+| `wun-shared/`          | Clojure (cljc) | open registries shared on both sides|
+| `wun-server/`          | Clojure        | Pedestal SSE + intent endpoint      |
+| `wun-web/`             | ClojureScript  | reagent-driven web client           |
+| `wun-ios/`             | Swift package  | SwiftUI client + WebFrame bridge    |
+| `wun-ios-example/`     | Swift package  | reference user-component pack       |
+| `wun-android/`         | Kotlin lib     | Compose Multiplatform Desktop client|
+| `wun-android-example/` | Kotlin module  | reference user-component pack       |
+| `templates/`           | -              | starter pack scaffold for `wun new` |
+| `cli/`, `bin/`         | babashka       | the `wun` CLI                       |
 
 ## Status: phase 0 + slice 1.A landed
 

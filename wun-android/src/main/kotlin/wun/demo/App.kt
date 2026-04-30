@@ -72,11 +72,16 @@ fun main() = application {
     var status by remember { mutableStateOf("connecting…") }
     var tree   by remember { mutableStateOf<WunNode>(WunNode.Null) }
     var state  by remember { mutableStateOf<JsonElement>(JsonNull) }
+    var screenStack by remember { mutableStateOf(emptyList<String>()) }
 
     val dispatcher = remember {
-        IntentDispatcher(BASE_URL, onError = { intent, code, _ ->
-            println("[demo] intent $intent -> $code")
-        })
+        IntentDispatcher(
+            baseUrl = BASE_URL,
+            onError = { intent, code, _ ->
+                println("[demo] intent $intent -> $code")
+            },
+            connIdProvider = { mirror.connId },
+        )
     }
     val sse = remember {
         SSEClient(
@@ -92,8 +97,9 @@ fun main() = application {
             },
             onEnvelope = { env ->
                 mirror.apply(env)
-                tree  = WunNode.fromJson(mirror.tree)
-                state = mirror.state
+                tree        = WunNode.fromJson(mirror.tree)
+                state       = mirror.state
+                screenStack = mirror.screenStack
             },
         )
     }
@@ -111,13 +117,13 @@ fun main() = application {
            title = "Wun · phase 3 demo",
            state = windowState) {
         CompositionLocalProvider(LocalWunRegistry provides registry) {
-            Surface(status = status, tree = tree, state = state)
+            Surface(status = status, tree = tree, state = state, stack = screenStack)
         }
     }
 }
 
 @Composable
-private fun Surface(status: String, tree: WunNode, state: JsonElement) {
+private fun Surface(status: String, tree: WunNode, state: JsonElement, stack: List<String>) {
     Column(modifier = Modifier.fillMaxSize()) {
         StatusBar(status)
         Divider()
@@ -132,7 +138,20 @@ private fun Surface(status: String, tree: WunNode, state: JsonElement) {
         }
 
         Divider()
+        StackBar(stack)
+        Divider()
         StateBar(state)
+    }
+}
+
+@Composable
+private fun StackBar(stack: List<String>) {
+    if (stack.isEmpty()) return
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Text("stack: ${stack.joinToString(" > ")}",
+             fontSize = 10.sp,
+             fontFamily = FontFamily.Monospace,
+             color = MaterialTheme.colors.onSurface.copy(alpha = 0.5f))
     }
 }
 

@@ -11,6 +11,7 @@ import wun.Registry
 object WunExample {
     fun register(registry: Registry) {
         registry.register("myapp/Greeting", GreetingRenderer.render)
+        // AUTO-REGISTER-MARK
     }
 
     fun registerDefaults() = register(Registry.shared)

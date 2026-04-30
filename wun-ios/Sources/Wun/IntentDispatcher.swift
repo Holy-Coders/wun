@@ -17,30 +17,45 @@ public final class IntentDispatcher: @unchecked Sendable {
         _ error: JSON?
     ) -> Void
 
+    /// Closure that returns the current connection id, or nil before
+    /// the first SSE envelope has arrived. Lets the dispatcher stay
+    /// decoupled from any particular store -- pass `{ store.connID }`
+    /// or any other source of truth.
+    public typealias ConnIDProvider = @Sendable () -> String?
+
     private let baseURL: URL
     private let session: URLSession
     private let onError: OnError
+    private let connIDProvider: ConnIDProvider
 
     public init(baseURL: URL,
                 session: URLSession = .shared,
-                onError: @escaping OnError = { _, _, _ in }) {
+                onError: @escaping OnError = { _, _, _ in },
+                connIDProvider: @escaping ConnIDProvider = { nil }) {
         self.baseURL = baseURL
         self.session = session
         self.onError = onError
+        self.connIDProvider = connIDProvider
     }
 
     /// Fire `intent` with `params`. Returns the generated intent id;
     /// the caller can use it to correlate against
     /// `Envelope.resolvesIntent` if it cares to track in-flight
-    /// intents.
+    /// intents. Includes the current `conn-id` (if any) in the body so
+    /// framework intents like `:wun/navigate` route to the right
+    /// connection's screen-stack on the server.
     @discardableResult
     public func dispatch(_ intent: String, _ params: [String: JSON]) -> String {
         let id = UUID().uuidString.lowercased()
-        let body: JSON = .object([
+        var fields: [String: JSON] = [
             "intent": .string(intent),
             "params": .object(params),
             "id":     .string(id),
-        ])
+        ]
+        if let cid = connIDProvider() {
+            fields["conn-id"] = .string(cid)
+        }
+        let body: JSON = .object(fields)
 
         var request = URLRequest(url: baseURL.appendingPathComponent("intent"))
         request.httpMethod = "POST"
@@ -70,7 +85,31 @@ public final class IntentDispatcher: @unchecked Sendable {
         return id
     }
 
-    /// Install this dispatcher as the global one renderers use.
+    /// Convenience: push `path` onto the connection's screen-stack.
+    /// `path` is matched server-side against each screen's `:path`
+    /// (e.g. `"/about"`).
+    @discardableResult
+    public func navigate(toPath path: String) -> String {
+        dispatch("wun/navigate", ["path": .string(path)])
+    }
+
+    /// Convenience: push the screen registered under `screenKey`
+    /// (e.g. `"app/about"`).
+    @discardableResult
+    public func navigate(toScreen screenKey: String) -> String {
+        dispatch("wun/navigate", ["screen": .string(screenKey)])
+    }
+
+    /// Convenience: pop the top of the connection's screen-stack.
+    @discardableResult
+    public func popScreen() -> String {
+        dispatch("wun/pop", [:])
+    }
+
+    /// Install this dispatcher as the global one renderers use. Also
+    /// wires `Wun.navigate(...)` / `Wun.popScreen()` so screen pushes
+    /// emitted by `:wun/Button {:on-press {:intent :wun/navigate ...}}`
+    /// reach the server with the right conn-id.
     @MainActor
     public func install() {
         Wun.intentDispatcher = { [weak self] intent, params in

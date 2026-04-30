@@ -17,6 +17,7 @@ import Wun
 public enum WunExample {
     public static func register(into registry: Registry) {
         registry.register("myapp/Greeting", Greeting.render)
+        // AUTO-REGISTER-MARK
     }
 
     public static let registeredComponents: [String] = [

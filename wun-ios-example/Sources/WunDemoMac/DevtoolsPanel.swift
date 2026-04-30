@@ -60,6 +60,15 @@ struct DevtoolsPanel: View {
                     .textSelection(.enabled)
             }
 
+            section("Connection") {
+                Text("conn-id: \(store.connID.map { String($0.prefix(8)) } ?? "—")")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Text("stack: \(store.screenStack.joined(separator: " > "))")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
             Spacer()
         }
         .padding(12)

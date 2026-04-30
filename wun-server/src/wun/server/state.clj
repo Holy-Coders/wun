@@ -8,17 +8,23 @@
 ;; SSE connections are keyed by core.async channel and carry per-conn
 ;; metadata: the *prior tree* the connection has seen (for diffing),
 ;; the *caps* the client advertised (for capability substitution),
-;; and the wire *fmt* (:transit or :json) the client requested.
+;; the wire *fmt* (:transit or :json), the *screen-stack* (top is the
+;; currently-rendered screen; phase 6.C navigation pushes/pops here),
+;; and a *conn-id* the client echoes on /intent POSTs so the server
+;; can route framework intents (`:wun/navigate`, `:wun/pop`) back to
+;; the originating connection.
+;;
 ;; New connections register with prior=nil; diff(nil, current) emits
 ;; a full :replace-at-root, so the initial frame falls out of the
 ;; same code path as ongoing broadcasts.
 (defonce connections (atom {}))
 
-(defn add-connection! [event-ch caps fmt screen-key]
-  (swap! connections assoc event-ch {:prior      nil
-                                     :caps       caps
-                                     :fmt        fmt
-                                     :screen-key screen-key}))
+(defn add-connection! [event-ch caps fmt screen-key conn-id]
+  (swap! connections assoc event-ch {:prior        nil
+                                     :caps         caps
+                                     :fmt          fmt
+                                     :screen-stack [screen-key]
+                                     :conn-id      conn-id}))
 
 (defn remove-connection! [event-ch]
   (swap! connections dissoc event-ch))
@@ -32,8 +38,70 @@
 (defn fmt [event-ch]
   (get-in @connections [event-ch :fmt]))
 
-(defn screen-key [event-ch]
-  (get-in @connections [event-ch :screen-key]))
+(defn screen-stack [event-ch]
+  (get-in @connections [event-ch :screen-stack]))
+
+(defn screen-key
+  "The screen currently rendered on `event-ch` -- the top of its
+   per-connection screen-stack."
+  [event-ch]
+  (peek (get-in @connections [event-ch :screen-stack])))
+
+(defn conn-id [event-ch]
+  (get-in @connections [event-ch :conn-id]))
+
+(defn channel-by-conn-id
+  "Look up the SSE event channel registered under `conn-id`. Returns
+   nil when no connection matches (likely closed since the client last
+   received the id)."
+  [conn-id]
+  (some (fn [[ch v]]
+          (when (= conn-id (:conn-id v)) ch))
+        @connections))
+
+(defn push-screen!
+  "Push `screen-key` onto the connection's screen-stack. Returns the
+   updated stack, or nil when the connection isn't registered (closed
+   between the intent posting and the routing call)."
+  [event-ch screen-key]
+  (let [m (swap! connections
+                 (fn [m]
+                   (if (contains? m event-ch)
+                     (update-in m [event-ch :screen-stack] (fnil conj []) screen-key)
+                     m)))]
+    (get-in m [event-ch :screen-stack])))
+
+(defn pop-screen!
+  "Pop the top of the connection's screen-stack, leaving at least one
+   screen behind (the root). Returns the updated stack, or nil when
+   the connection isn't registered."
+  [event-ch]
+  (let [m (swap! connections
+                 (fn [m]
+                   (if (contains? m event-ch)
+                     (update-in m [event-ch :screen-stack]
+                                (fn [stack]
+                                  (if (> (count stack) 1)
+                                    (vec (butlast stack))
+                                    stack)))
+                     m)))]
+    (get-in m [event-ch :screen-stack])))
+
+(defn replace-screen!
+  "Replace the top of the screen-stack with `screen-key`. Useful for
+   `:wun/replace`-style navigation (think 'redirect') that doesn't
+   want to grow the stack."
+  [event-ch screen-key]
+  (let [m (swap! connections
+                 (fn [m]
+                   (if (contains? m event-ch)
+                     (update-in m [event-ch :screen-stack]
+                                (fn [stack]
+                                  (if (seq stack)
+                                    (assoc stack (dec (count stack)) screen-key)
+                                    [screen-key])))
+                     m)))]
+    (get-in m [event-ch :screen-stack])))
 
 (defn update-prior-tree! [event-ch tree]
   (swap! connections (fn [m]

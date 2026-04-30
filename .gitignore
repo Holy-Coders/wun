@@ -2,3 +2,12 @@
 .idea/
 .vscode/
 *.log
+
+# Rails leftovers from the pre-pivot history; don't recommit them.
+config/
+storage/
+tmp/
+
+# Per-user MCP / editor config.
+.mcp.json
+.claude/

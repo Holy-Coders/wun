@@ -48,4 +48,8 @@
             "component shipped from the wun-ios-example Swift package. "
             "Clients that advertise :myapp/Greeting render it natively; "
             "clients that don't (like the current web bundle) see a "
-            "WebFrame fallback in its place.")]])})
+            "WebFrame fallback in its place.")]
+      [:wun/Stack {:direction :row :gap 8}
+       [:wun/Button {:on-press {:intent :wun/navigate
+                                :params {:path "/about"}}}
+        "→ About"]]])})

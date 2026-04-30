@@ -23,6 +23,12 @@ public enum WunFoundation {
         registry.register("wun/Spacer",     WunSpacer.render)
         registry.register("wun/ScrollView", WunScrollView.render)
         registry.register("wun/WebFrame",   WunWebFrame.render)
+        // 6.B primitives:
+        registry.register("wun/Divider",    WunDivider.render)
+        registry.register("wun/Link",       WunLink.render)
+        registry.register("wun/Switch",     WunSwitch.render)
+        registry.register("wun/Badge",      WunBadge.render)
+        registry.register("wun/Heading",    WunHeading.render)
     }
 
     public static func registerDefaults() {

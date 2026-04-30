@@ -2,11 +2,16 @@
 // killer feature: any component the native client lacks falls back
 // to a Turbo / WebKit frame pointing at a server-rendered page.
 //
-// Today this is a plain WKWebView showing whatever HTML the server
-// returns for the WebFrame's `:src`. Phase 2.F+ swaps in Hotwire
-// Native iOS (https://github.com/hotwired/hotwire-native-ios) for
-// proper Turbo navigation handling; the renderer surface stays the
-// same.
+// 6.D adds the native bridge: clicking a button inside a WebFrame
+// fires an intent through `Wun.intentDispatcher` (i.e. through the
+// app's native IntentDispatcher and SSE) rather than POSTing to
+// /intent over a fresh HTTP connection. The wiring uses a
+// WKScriptMessageHandler registered as `wunDispatch`; the server's
+// HTML stub calls `window.WunBridge.dispatch(intent, params)`, the
+// bridge forwards to the message handler, and the app routes it.
+//
+// Phase 2.F+ may swap the WKWebView for Hotwire Native iOS for
+// proper Turbo navigation; the renderer surface stays the same.
 
 import SwiftUI
 import WebKit
@@ -58,12 +63,79 @@ public struct WunWebView: View {
     }
 }
 
+// MARK: - WunBridge user-script + message handler
+
+private let wunBridgeUserScript: String = """
+window.WunBridge = window.WunBridge || {
+  dispatch: function(intent, params) {
+    try {
+      window.webkit.messageHandlers.wunDispatch.postMessage({
+        intent: String(intent),
+        params: params || {}
+      });
+    } catch (e) {
+      console.error('WunBridge.dispatch failed', e);
+    }
+  }
+};
+"""
+
+@MainActor
+final class WunBridgeHandler: NSObject, WKScriptMessageHandler {
+    func userContentController(_ uc: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "wunDispatch",
+              let dict = message.body as? [String: Any],
+              let intent = dict["intent"] as? String
+        else { return }
+        let raw = dict["params"] as? [String: Any] ?? [:]
+        let params = raw.reduce(into: [String: JSON]()) { acc, kv in
+            acc[kv.key] = jsonFromAny(kv.value)
+        }
+        Wun.intentDispatcher(intent, params)
+    }
+}
+
+private func jsonFromAny(_ v: Any) -> JSON {
+    if v is NSNull { return .null }
+    if let b = v as? Bool, "\(type(of: v))" == "__NSCFBoolean" { return .bool(b) }
+    if let s = v as? String { return .string(s) }
+    if let i = v as? Int    { return .int(Int64(i)) }
+    if let d = v as? Double { return .double(d) }
+    if let arr = v as? [Any] {
+        return .array(arr.map(jsonFromAny))
+    }
+    if let dict = v as? [String: Any] {
+        return .object(dict.reduce(into: [String: JSON]()) { acc, kv in
+            acc[kv.key] = jsonFromAny(kv.value)
+        })
+    }
+    return .string("\(v)")
+}
+
+@MainActor
+private func makeBridgedWebView() -> WKWebView {
+    let userScript = WKUserScript(
+        source: wunBridgeUserScript,
+        injectionTime: .atDocumentStart,
+        forMainFrameOnly: true
+    )
+    let userContent = WKUserContentController()
+    userContent.addUserScript(userScript)
+    let handler = WunBridgeHandler()
+    userContent.add(handler, name: "wunDispatch")
+
+    let config = WKWebViewConfiguration()
+    config.userContentController = userContent
+    return WKWebView(frame: .zero, configuration: config)
+}
+
 #if canImport(UIKit)
 private struct WunWebViewRepresentable: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView {
-        let view = WKWebView()
+        let view = makeBridgedWebView()
         view.load(URLRequest(url: url))
         return view
     }
@@ -79,7 +151,7 @@ private struct WunWebViewRepresentable: NSViewRepresentable {
     let url: URL
 
     func makeNSView(context: Context) -> WKWebView {
-        let view = WKWebView()
+        let view = makeBridgedWebView()
         view.load(URLRequest(url: url))
         return view
     }

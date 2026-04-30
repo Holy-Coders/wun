@@ -21,6 +21,13 @@ class IntentDispatcher(
     private val client: OkHttpClient = OkHttpClient(),
     private val onError: (intent: String, status: Int, error: JsonElement?) -> Unit
         = { _, _, _ -> },
+    /**
+     * Returns the current connection id, or null before the first SSE
+     * envelope has arrived. The dispatcher includes it on every POST
+     * so framework intents (`wun/navigate`, `wun/pop`) are routed to
+     * this connection's screen-stack on the server.
+     */
+    private val connIdProvider: () -> String? = { null },
 ) {
     private val mediaType = "application/json".toMediaType()
 
@@ -31,6 +38,7 @@ class IntentDispatcher(
             put("intent", JsonPrimitive(intent))
             put("params", JsonObject(params))
             put("id",     JsonPrimitive(id))
+            connIdProvider()?.let { put("conn-id", JsonPrimitive(it)) }
         }.toString().toRequestBody(mediaType)
 
         val req = Request.Builder()
@@ -55,4 +63,15 @@ class IntentDispatcher(
         })
         return id
     }
+
+    /** Push `path` onto the connection's screen-stack server-side. */
+    fun navigateToPath(path: String): String =
+        dispatch("wun/navigate", mapOf("path" to JsonPrimitive(path)))
+
+    /** Push `screenKey` (e.g. `app/about`) onto the screen-stack. */
+    fun navigateToScreen(screenKey: String): String =
+        dispatch("wun/navigate", mapOf("screen" to JsonPrimitive(screenKey)))
+
+    /** Pop the top of the connection's screen-stack. */
+    fun popScreen(): String = dispatch("wun/pop")
 }

@@ -71,6 +71,19 @@ public extension JSON {
         }
     }
 
+    var boolValue: Bool? {
+        if case .bool(let v) = self { return v }
+        return nil
+    }
+
+    var doubleValue: Double? {
+        switch self {
+        case .double(let v): return v
+        case .int(let v):    return Double(v)
+        default:             return nil
+        }
+    }
+
     var objectValue: [String: JSON]? {
         if case .object(let v) = self { return v }
         return nil

@@ -25,6 +25,12 @@ object WunFoundation {
         registry.register("wun/Spacer",     SpacerRenderer.render)
         registry.register("wun/ScrollView", ScrollViewRenderer.render)
         registry.register("wun/WebFrame",   WebFrameRenderer.render)
+        // 6.B primitives:
+        registry.register("wun/Divider",    DividerRenderer.render)
+        registry.register("wun/Link",       LinkRenderer.render)
+        registry.register("wun/Switch",     SwitchRenderer.render)
+        registry.register("wun/Badge",      BadgeRenderer.render)
+        registry.register("wun/Heading",    HeadingRenderer.render)
     }
 
     fun registerDefaults() = register(Registry.shared)

@@ -13,7 +13,8 @@
             ;; populate registries:
             wun.foundation.components
             wun.web.foundation
-            wun.app.counter))
+            wun.app.counter
+            wun.app.about))
 
 ;; ---------------------------------------------------------------------------
 ;; Config
@@ -59,8 +60,11 @@
        (into {})))
 
 (defn- caps-url []
-  (str server-base "/wun?caps=" (js/encodeURIComponent
-                                 (capabilities/serialize (current-caps)))))
+  (let [path (or (some-> js/window .-location .-pathname) "/")]
+    (str server-base
+         "/wun?caps=" (js/encodeURIComponent
+                       (capabilities/serialize (current-caps)))
+         "&path="    (js/encodeURIComponent path))))
 
 (defn- start-sse! []
   (when-let [old @es] (.close old))
@@ -101,6 +105,7 @@
 (defn ^:export init []
   (mount!)
   (bus/start-pending-gc!)
+  (bus/install-popstate-handler!)
   (start-sse!))
 
 (defn ^:export after-reload []

@@ -24,6 +24,13 @@ public final class SSEClient: @unchecked Sendable {
     private let session: URLSession
     private var task: Task<Void, Never>?
 
+    /// Reconnect every time the underlying stream ends or errors. The
+    /// runtime applies exponential backoff between attempts (1s, 2s,
+    /// 4s, 8s, capped at 30s) and resets after a successful connect
+    /// frame survives long enough to be useful. Set to false from
+    /// tests that want exactly one connection attempt.
+    public var autoReconnect: Bool = true
+
     private let onEnvelope:    OnEnvelope
     private let onConnected:   OnConnected
     private let onDisconnect:  OnDisconnect
@@ -46,7 +53,7 @@ public final class SSEClient: @unchecked Sendable {
         guard task == nil else { return }
         task = Task { [weak self] in
             guard let self else { return }
-            await self.runLoop()
+            await self.driveLoop()
         }
     }
 
@@ -61,7 +68,29 @@ public final class SSEClient: @unchecked Sendable {
 
     // MARK: - Loop
 
-    private func runLoop() async {
+    /// Outer loop: drive `runLoop` once per connect attempt, sleep
+    /// between failed attempts with exponential backoff. The brief's
+    /// "match / refine / conflict" semantics already cover what
+    /// happens when a reconnect lands -- the bootstrap envelope ships
+    /// the full server-authoritative tree and pending intents drop.
+    private func driveLoop() async {
+        var attempt = 0
+        while !Task.isCancelled {
+            let didConnect = await runLoop()
+            if Task.isCancelled || !autoReconnect { return }
+            // Reset backoff when the connection lasted long enough to
+            // produce at least one successful frame; otherwise the
+            // server is reachable but rejecting us, so backoff.
+            attempt = didConnect ? 0 : attempt + 1
+            let delayMs = backoffDelayMs(attempt)
+            try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+        }
+    }
+
+    /// Returns true iff we got past the HTTP 200 + onConnected stage
+    /// (so the caller can reset backoff).
+    @discardableResult
+    private func runLoop() async -> Bool {
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache",          forHTTPHeaderField: "Cache-Control")
@@ -69,19 +98,30 @@ public final class SSEClient: @unchecked Sendable {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
+        var connected = false
         do {
             let (bytes, response) = try await session.bytes(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
                 onDisconnect(URLError(.badServerResponse))
-                return
+                return false
             }
             onConnected()
+            connected = true
             try await consume(bytes)
         } catch {
             onDisconnect(error)
-            return
+            return connected
         }
         onDisconnect(nil)
+        return connected
+    }
+
+    private func backoffDelayMs(_ attempt: Int) -> Int {
+        // 1s, 2s, 4s, 8s, 16s, 30s cap.
+        let exp = min(attempt, 5)
+        let base = 1_000 * (1 << exp)
+        let jitter = Int.random(in: 0...500)
+        return min(30_000, base + jitter)
     }
 
     private func consume(_ bytes: URLSession.AsyncBytes) async throws {

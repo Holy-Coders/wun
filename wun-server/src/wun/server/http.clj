@@ -65,34 +65,39 @@
 
 (defn- broadcast-to-channel!
   "Diff `ch`'s prior tree against the per-connection-substituted current
-   tree and enqueue a patch envelope iff there are patches or an
-   intent to resolve. Substitution + encoding happen per-channel:
-   different clients may advertise different caps and request
-   different wire formats. Updates the stored prior on successful
-   enqueue. On offer! failure, evicts the connection iff its channel
-   has actually closed (so transient buffer-full conditions don't drop
-   slow-but-alive clients)."
-  [ch resolves-intent]
-  (let [screen-key (state/screen-key ch)
-        raw        (current-tree-for screen-key)
-        caps       (state/caps ch)
-        fmt        (state/fmt ch)
-        tree       (capabilities/substitute raw caps web-frame-src)
-        prior      (state/prior-tree ch)
-        patches    (diff/diff prior tree)]
-    (when (or (seq patches) resolves-intent)
-      (let [env  (wire/patch-envelope patches
-                                      {:resolves-intent resolves-intent
-                                       :state           @state/app-state})
-            data (wire/encode-envelope fmt env)]
-        (cond
-          (a/offer! ch {:name "patch" :data data})
-          (state/update-prior-tree! ch tree)
+   tree and enqueue a patch envelope iff there are patches, an intent
+   to resolve, or `extra-keys` (e.g. screen-stack/conn-id changes the
+   client needs even when the rendered tree is unchanged).
 
-          (state/closed? ch)
-          (do (state/remove-connection! ch)
-              (log/debugf "wun: evicted closed connection (%d remain)"
-                          (state/connection-count))))))))
+   Substitution + encoding happen per-channel: different clients may
+   advertise different caps and request different wire formats.
+   Updates the stored prior on successful enqueue. On offer! failure,
+   evicts the connection iff its channel has actually closed (so
+   transient buffer-full conditions don't drop slow-but-alive
+   clients)."
+  ([ch resolves-intent] (broadcast-to-channel! ch resolves-intent nil))
+  ([ch resolves-intent extra-keys]
+   (let [screen-key (state/screen-key ch)
+         raw        (current-tree-for screen-key)
+         caps       (state/caps ch)
+         fmt        (state/fmt ch)
+         tree       (capabilities/substitute raw caps web-frame-src)
+         prior      (state/prior-tree ch)
+         patches    (diff/diff prior tree)]
+     (when (or (seq patches) resolves-intent (seq extra-keys))
+       (let [env  (wire/patch-envelope patches
+                                       (merge {:resolves-intent resolves-intent
+                                               :state           @state/app-state}
+                                              extra-keys))
+             data (wire/encode-envelope fmt env)]
+         (cond
+           (a/offer! ch {:name "patch" :data data})
+           (state/update-prior-tree! ch tree)
+
+           (state/closed? ch)
+           (do (state/remove-connection! ch)
+               (log/debugf "wun: evicted closed connection (%d remain)"
+                           (state/connection-count)))))))))
 
 (defn broadcast!
   "Diff against every connection's prior tree and enqueue per-channel
@@ -137,8 +142,12 @@
    fallback because EventSource can't set custom headers). Also reads
    `?path=` to bind this connection to a particular screen.
 
-   Registers the channel along with parsed metadata, then pushes the
-   initial frame through the regular broadcast path."
+   Registers the channel along with parsed metadata and a fresh
+   server-assigned conn-id, then pushes the initial frame through the
+   regular broadcast path. The first envelope carries the conn-id and
+   the initial screen-stack so the client can echo conn-id on /intent
+   POSTs and route framework intents (`:wun/navigate`, `:wun/pop`)
+   back to the originating connection."
   [event-ch ctx]
   (let [request    (:request ctx)
         headers    (:headers request)
@@ -147,11 +156,14 @@
         fmt-str    (or (get headers "x-wun-format")       (:fmt params))
         caps       (capabilities/parse caps-str)
         fmt        (parse-fmt fmt-str)
-        screen-key (resolve-screen-key params)]
-    (state/add-connection! event-ch caps fmt screen-key)
-    (log/debugf "wun: connected screen=%s fmt=%s caps=%s"
-                screen-key (name fmt) (pr-str caps))
-    (broadcast-to-channel! event-ch nil)
+        screen-key (resolve-screen-key params)
+        conn-id    (str (java.util.UUID/randomUUID))]
+    (state/add-connection! event-ch caps fmt screen-key conn-id)
+    (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s"
+                conn-id screen-key (name fmt) (pr-str caps))
+    (broadcast-to-channel! event-ch nil
+                           {:conn-id      conn-id
+                            :screen-stack [screen-key]})
     ctx))
 
 ;; ---------------------------------------------------------------------------
@@ -183,15 +195,94 @@
                               "application/transit+json")}
    :body    (wire/encode-envelope fmt body)})
 
+;; Framework intents are routed by the server itself rather than going
+;; through the `intents/registry` morph dispatch. Their effect is
+;; per-connection (push / pop / replace the screen on the connection's
+;; stack), so they need a conn-id from the client and never broadcast
+;; to other connections. Splitting them out keeps app-defined intents
+;; pure morphs of app state, the way the brief calls them.
+
+(def ^:private framework-intents
+  #{:wun/navigate :wun/pop :wun/replace})
+
+(defn- resolve-screen-from-params
+  "Framework navigation params can carry either `:screen` (an explicit
+   keyword like `:about/main`) or `:path` (a literal route path like
+   `/about`). Returns the keyword to push, or nil when neither
+   resolves to a registered screen."
+  [{:keys [screen path]}]
+  (or (when screen
+        (let [k (cond-> screen (string? screen) keyword)]
+          (when (screens/lookup k) k)))
+      (when path (screens/lookup-by-path path))))
+
+(defn- handle-framework-intent!
+  "Apply a framework intent against the originating connection only.
+   Returns a map suitable for splatting into the response envelope:
+   `{:status :ok|:error :error <map>}`. Also broadcasts the new tree
+   for that connection (everyone else's screen-stack is untouched)."
+  [ch intent params id]
+  (cond
+    (nil? ch)
+    {:status :error
+     :error  {:reason  :unknown-conn
+              :message "framework intent missing or unknown :conn-id"}}
+
+    (= intent :wun/navigate)
+    (if-let [target (resolve-screen-from-params params)]
+      (let [stack (state/push-screen! ch target)]
+        (broadcast-to-channel! ch id {:screen-stack stack})
+        {:status :ok})
+      {:status :error
+       :error  {:reason  :no-such-screen
+                :message "no screen matched :screen or :path"
+                :params  params}})
+
+    (= intent :wun/replace)
+    (if-let [target (resolve-screen-from-params params)]
+      (let [stack (state/replace-screen! ch target)]
+        (broadcast-to-channel! ch id {:screen-stack stack})
+        {:status :ok})
+      {:status :error
+       :error  {:reason  :no-such-screen
+                :message "no screen matched :screen or :path"
+                :params  params}})
+
+    (= intent :wun/pop)
+    (let [stack (state/pop-screen! ch)]
+      (broadcast-to-channel! ch id {:screen-stack stack})
+      {:status :ok})))
+
+(defn- coerce-conn-id
+  "JSON envelopes encode UUIDs as strings already; transit ones may
+   send a real UUID. Either way we store them as strings on the
+   connection so equality is straightforward."
+  [v]
+  (cond
+    (nil? v)    nil
+    (string? v) v
+    :else       (str v)))
+
 (defn- intent-handler [request]
-  (let [[envelope fmt] (request->envelope+fmt request)
-        {:keys [intent params id]} envelope]
-    (if-let [err (intents/validate-params intent params)]
-      (response fmt 400 {:status :error :resolves-intent id :error err})
-      (do
-        (swap! state/app-state intents/apply-intent intent params)
-        (broadcast! id)
-        (response fmt 200 {:status :ok :resolves-intent id})))))
+  (let [[envelope fmt]            (request->envelope+fmt request)
+        {:keys [intent params id]} envelope
+        conn-id                    (coerce-conn-id (:conn-id envelope))]
+    (cond
+      (contains? framework-intents intent)
+      (let [ch     (some-> conn-id state/channel-by-conn-id)
+            result (handle-framework-intent! ch intent params id)]
+        (case (:status result)
+          :ok    (response fmt 200 {:status :ok :resolves-intent id})
+          :error (response fmt 400 {:status :error :resolves-intent id
+                                    :error  (:error result)})))
+
+      :else
+      (if-let [err (intents/validate-params intent params)]
+        (response fmt 400 {:status :error :resolves-intent id :error err})
+        (do
+          (swap! state/app-state intents/apply-intent intent params)
+          (broadcast! id)
+          (response fmt 200 {:status :ok :resolves-intent id}))))))
 
 ;; ---------------------------------------------------------------------------
 ;; WebFrame fallback endpoint.
@@ -259,6 +350,38 @@
     (when (.startsWith candidate root-path)
       (.toFile candidate))))
 
+(defn- send-file [^File f]
+  (let [ct (or (mime-types (ext-of (.getName f))) "application/octet-stream")]
+    {:status  200
+     :headers {"Content-Type"  ct
+               ;; Spike-time: every request revalidates so cljs
+               ;; rebuilds show up without forcing the user to
+               ;; hard-refresh.
+               "Cache-Control" "no-cache, no-store, must-revalidate"
+               "Pragma"        "no-cache"
+               "Expires"       "0"}
+     :body    f}))
+
+;; Paths the server handles itself and that must not be hijacked by
+;; the SPA fallback. Without this, a request to /web-frames/<k>/<bad>
+;; (which Pedestal's router transforms before our interceptor sees
+;; it) ends up back here with no :response set and `looks-like-route?`
+;; would happily serve index.html instead of the real 410.
+(def ^:private server-handled-prefixes
+  ["/wun" "/intent" "/web-frames"])
+
+(defn- server-handled? [^String uri]
+  (some #(.startsWith uri ^String %) server-handled-prefixes))
+
+(defn- looks-like-route?
+  "Treat a path as a client-side route (eligible for SPA fallback to
+   index.html) when it has no file extension AND isn't claimed by a
+   server endpoint. `.js`, `.css`, `.map` etc. still 404 properly so
+   a typo doesn't masquerade as the SPA shell."
+  [^String uri]
+  (and (nil? (ext-of uri))
+       (not (server-handled? uri))))
+
 (defn- static-interceptor [^File root]
   (interceptor/interceptor
    {:name ::static
@@ -269,25 +392,28 @@
         (let [{:keys [request-method uri]} (:request ctx)]
           (if-not (= :get request-method)
             ctx
-            (let [path (if (or (nil? uri) (= "/" uri)) "/index.html" uri)]
-              (if-let [^File f0 (safe-resolve root path)]
-                (let [f (if (.isDirectory f0) (File. f0 "index.html") f0)]
-                  (if (.isFile f)
-                    (let [ct (or (mime-types (ext-of (.getName f)))
-                                 "application/octet-stream")]
-                      (assoc ctx :response
-                             {:status  200
-                              :headers {"Content-Type"  ct
-                                        ;; Spike-time: every request
-                                        ;; revalidates so cljs rebuilds
-                                        ;; show up without forcing the
-                                        ;; user to hard-refresh.
-                                        "Cache-Control" "no-cache, no-store, must-revalidate"
-                                        "Pragma"        "no-cache"
-                                        "Expires"       "0"}
-                              :body    f}))
+            (let [path (if (or (nil? uri) (= "/" uri)) "/index.html" uri)
+                  f0   (safe-resolve root path)
+                  f    (cond
+                         (and f0 (.isDirectory f0)) (File. f0 "index.html")
+                         f0                         f0)]
+              (cond
+                (and f (.isFile f))
+                (assoc ctx :response (send-file f))
+
+                ;; SPA fallback: a path the browser is *navigating* to
+                ;; (no file extension) that doesn't exist on disk gets
+                ;; index.html so client-side routing -- including a
+                ;; reload of `/about` -- always lands on the bundle,
+                ;; which then asks the server for the right screen.
+                (and (looks-like-route? uri)
+                     (not= "/index.html" path))
+                (let [^File index (File. root "index.html")]
+                  (if (.isFile index)
+                    (assoc ctx :response (send-file index))
                     ctx))
-                ctx))))))}))
+
+                :else ctx))))))}))
 
 ;; ---------------------------------------------------------------------------
 ;; Routes

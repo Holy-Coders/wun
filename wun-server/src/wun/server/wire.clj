@@ -70,11 +70,18 @@
      :resolves-intent  the UUID of the intent this envelope confirms
      :state            current screen state, mirrored client-side so
                        optimistic morphs can predict against the same
-                       value the server saw"
+                       value the server saw
+     :conn-id          a server-assigned id the client echoes on
+                       /intent POSTs so the server can route framework
+                       intents (navigate / pop) to the right connection
+     :screen-stack     vector of screen keys for this connection; top
+                       is the currently-rendered screen. Updated when
+                       the client (or a server-side rule) pushes / pops"
   ([patches] (patch-envelope patches nil))
   ([patches extras]
    (merge {:patches (vec patches) :status :ok}
-          (some-> extras (select-keys [:resolves-intent :state])))))
+          (some-> extras (select-keys [:resolves-intent :state
+                                       :conn-id :screen-stack])))))
 
 (defn encode-envelope
   "Encode an envelope using the given wire `fmt` (`:transit` or `:json`)."

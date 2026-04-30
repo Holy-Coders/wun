@@ -59,11 +59,24 @@ final class AppViewModel: ObservableObject {
         // Resolve relative WebFrame URLs against this host.
         Wun.serverBase = baseURL
 
-        // Wire intents through this dispatcher.
-        let d = IntentDispatcher(baseURL: baseURL,
-                                 onError: { intent, code, _ in
-            print("[demo] intent \(intent) -> \(code)")
-        })
+        // Wire intents through this dispatcher. The conn-id provider
+        // reads from the store's @Published connID so framework
+        // intents (`wun/navigate`, `wun/pop`) get routed to the right
+        // server-side connection. The closure captures `store` rather
+        // than self to avoid a cycle (dispatcher is a stored property
+        // of self).
+        let storeRef = store
+        let d = IntentDispatcher(
+            baseURL: baseURL,
+            onError: { intent, code, _ in
+                print("[demo] intent \(intent) -> \(code)")
+            },
+            connIDProvider: { [weak storeRef] in
+                // Reading @Published off the main actor without an
+                // explicit hop is fine for plain reads; the closure
+                // runs synchronously on the dispatch path.
+                MainActor.assumeIsolated { storeRef?.connID }
+            })
         d.install()
         self.dispatcher = d
 

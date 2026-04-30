@@ -116,3 +116,52 @@
    :fallback :web
    :ios      "WunScrollView"
    :android  "WunScrollView"})
+
+;; --- 6.B primitives ---------------------------------------------------------
+
+(defcomponent :wun/Divider
+  {:since    1
+   :schema   [:map
+              [:thickness {:optional true} :int]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunDivider"
+   :android  "WunDivider"})
+
+(defcomponent :wun/Link
+  {:since    1
+   :schema   [:map
+              [:href     :string]
+              [:on-press {:optional true} :wun/intent-ref]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunLink"
+   :android  "WunLink"})
+
+(defcomponent :wun/Switch
+  {:since    1
+   :schema   [:map
+              [:value    :boolean]
+              [:on-toggle {:optional true} :wun/intent-ref]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunSwitch"
+   :android  "WunSwitch"})
+
+(defcomponent :wun/Badge
+  {:since    1
+   :schema   [:map
+              [:tone {:optional true} [:enum :info :success :warning :danger]]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunBadge"
+   :android  "WunBadge"})
+
+(defcomponent :wun/Heading
+  {:since    1
+   :schema   [:map
+              [:level {:optional true} [:enum 1 2 3 4]]]
+   :loading  :shimmer
+   :fallback :web
+   :ios      "WunHeading"
+   :android  "WunHeading"})

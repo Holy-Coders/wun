@@ -16,13 +16,24 @@ public final class TreeStore: ObservableObject {
     @Published public private(set) var state: JSON = .null
     @Published public private(set) var lastResolvedIntent: String?
 
+    /// Server-assigned connection id, echoed on every /intent POST so
+    /// framework intents (`:wun/navigate`, `:wun/pop`) can be routed
+    /// to *this* connection's screen-stack.
+    @Published public private(set) var connID: String?
+
+    /// Top of the screen-stack is the screen the server is currently
+    /// rendering into this connection. Updated on every envelope that
+    /// carries a `screen-stack` extra (initial frame, navigate, pop).
+    @Published public private(set) var screenStack: [String] = []
+
     public init(initial: JSON = .null) {
         self.tree = WunNode.from(initial)
     }
 
     /// Apply an SSE envelope: patches against the tree, mirror state,
-    /// remember the resolved intent id (callers may use it to drop
-    /// matching pending entries in their dispatcher).
+    /// pick up the server-assigned conn-id and screen-stack, remember
+    /// the resolved intent id (callers may use it to drop matching
+    /// pending entries in their dispatcher).
     public func apply(_ envelope: Envelope) {
         if !envelope.patches.isEmpty {
             let raw = Diff.apply(tree.toJSON(), envelope.patches)
@@ -30,6 +41,12 @@ public final class TreeStore: ObservableObject {
         }
         if let s = envelope.state {
             state = s
+        }
+        if let cid = envelope.connID {
+            connID = cid
+        }
+        if let stack = envelope.screenStack {
+            screenStack = stack
         }
         lastResolvedIntent = envelope.resolvesIntent
     }

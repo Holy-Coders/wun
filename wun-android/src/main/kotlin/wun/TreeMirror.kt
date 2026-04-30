@@ -14,10 +14,14 @@ class TreeMirror(initial: JsonElement = JsonNull) {
     @Volatile private var _tree: JsonElement = initial
     @Volatile private var _state: JsonElement = JsonNull
     @Volatile private var _lastResolvedIntent: String? = null
+    @Volatile private var _connId: String? = null
+    @Volatile private var _screenStack: List<String> = emptyList()
 
     val tree:  JsonElement get() = _tree
     val state: JsonElement get() = _state
     val lastResolvedIntent: String? get() = _lastResolvedIntent
+    val connId: String? get() = _connId
+    val screenStack: List<String> get() = _screenStack
 
     fun apply(envelope: Envelope) {
         synchronized(lock) {
@@ -25,6 +29,8 @@ class TreeMirror(initial: JsonElement = JsonNull) {
                 _tree = Diff.apply(_tree, envelope.patches)
             }
             envelope.state?.let { _state = it }
+            envelope.connId?.let { _connId = it }
+            envelope.screenStack?.let { _screenStack = it }
             _lastResolvedIntent = envelope.resolvesIntent
         }
     }
