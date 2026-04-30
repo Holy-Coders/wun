@@ -1,29 +1,13 @@
 plugins {
-    // 2.1.20+ knows how to parse Java 25's version string; older
-    // releases trip on `IllegalArgumentException: 25.0.2`.
     kotlin("jvm") version "2.1.20"
     kotlin("plugin.serialization") version "2.1.20"
     kotlin("plugin.compose") version "2.1.20"
     id("org.jetbrains.compose") version "1.7.3"
     application
-    `maven-publish`
-}
-
-group   = "wun"
-version = "0.1.0-SNAPSHOT"
-
-publishing {
-    publications {
-        register<MavenPublication>("maven") {
-            from(components["java"])
-        }
-    }
 }
 
 application {
-    // Compose Desktop demo window is the default; the SmokeKt CLI
-    // is still reachable via `gradle run -PmainClass=wun.SmokeKt`.
-    mainClass = (project.findProperty("mainClass") as String?) ?: "wun.demo.AppKt"
+    mainClass = "myapp.demo.AppKt"
 }
 
 repositories {
@@ -33,19 +17,16 @@ repositories {
 }
 
 dependencies {
+    // Pulls wun-android via the composite build declared in
+    // settings.gradle.kts -- no `publishToMavenLocal` step required.
+    // The included build's rootProject.name is "wun" + group "wun".
+    implementation("wun:wun")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
-
     implementation(compose.desktop.currentOs)
-
-    testImplementation(kotlin("test"))
 }
 
 kotlin {
     jvmToolchain(21)
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
