@@ -36,6 +36,7 @@
    :render
    (fn [state]
      [:wun/Stack {:gap 12 :padding 24}
+      [:myapp/Greeting {:name "Aaron"}]
       [:wun/Text {:variant :h1} (str "Counter: " (:counter state 0))]
       [:wun/Stack {:direction :row :gap 8}
        [:wun/Button {:on-press {:intent :counter/dec   :params {}}}     "-"]
@@ -43,7 +44,8 @@
        [:wun/Button {:on-press {:intent :counter/by    :params {:n 5}}} "+5"]
        [:wun/Button {:on-press {:intent :counter/reset :params {}}}     "reset"]]
       [:wun/Text {:variant :body}
-       (str "Phase 1.D-Malli: intent params are now Malli-validated at both "
-            "ends of the wire. :counter/by takes {:n :int}; the +5 button "
-            "fires it. Manually POSTing :counter/by with a non-int :n is "
-            "rejected with an error envelope.")]])})
+       (str "Phase 2.H: :myapp/Greeting above is a user-namespace "
+            "component shipped from the wun-ios-example Swift package. "
+            "Clients that advertise :myapp/Greeting render it natively; "
+            "clients that don't (like the current web bundle) see a "
+            "WebFrame fallback in its place.")]])})

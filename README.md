@@ -22,13 +22,14 @@ This is a **monorepo** for the four sub-projects called for in the brief.
 Each subdirectory is self-contained and can be split into its own repo at
 any time with `git subtree split`.
 
-| dir            | language       | status                                 |
-|----------------|----------------|----------------------------------------|
-| `wun-shared/`  | Clojure (cljc) | open registries shared on both sides   |
-| `wun-server/`  | Clojure        | phase 0/1.A                            |
-| `wun-web/`     | ClojureScript  | phase 0/1.A                            |
-| `wun-ios/`     | Swift package  | empty stub (phase 2)                   |
-| `wun-android/` | Kotlin lib     | empty stub (phase 3)                   |
+| dir                | language       | status                                  |
+|--------------------|----------------|-----------------------------------------|
+| `wun-shared/`      | Clojure (cljc) | open registries shared on both sides    |
+| `wun-server/`      | Clojure        | phase 0 → 2.H                           |
+| `wun-web/`         | ClojureScript  | phase 0 → 1.F                           |
+| `wun-ios/`         | Swift package  | phase 2.A → 2.H                         |
+| `wun-ios-example/` | Swift package  | reference user-component (2.H demo)     |
+| `wun-android/`     | Kotlin lib     | empty stub (phase 3)                    |
 
 ## Status: phase 0 + slice 1.A landed
 
@@ -267,6 +268,15 @@ identically.
     reads either header or query-string. SSEClient takes
     `headers: [String:String]`; web stays on the query-string form
     because EventSource can't set custom headers. *Done.*
+  - **2.H** reference user component shipped as a separate Swift
+    package: `wun-ios-example/` defines `WunExample` (registers
+    `:myapp/Greeting`) and an `example-smoke` executable. On the
+    server, `myapp.components` carries the matching defcomponent
+    spec; the counter screen now opens with a `:myapp/Greeting`.
+    Clients that advertise the cap render it natively; clients
+    that don't see a `WebFrame` substituted at the smallest
+    containing subtree -- demonstrating the brief's "no privileged
+    path" thesis on iOS. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

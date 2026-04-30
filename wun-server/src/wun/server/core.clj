@@ -8,7 +8,8 @@
   (:require [wun.server.http :as http]
             ;; Side-effecting requires populate the open registries.
             wun.foundation.components
-            wun.app.counter)
+            wun.app.counter
+            myapp.components)
   (:gen-class))
 
 (defonce ^:private server (atom nil))
