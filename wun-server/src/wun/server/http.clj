@@ -277,7 +277,14 @@
                                  "application/octet-stream")]
                       (assoc ctx :response
                              {:status  200
-                              :headers {"Content-Type" ct}
+                              :headers {"Content-Type"  ct
+                                        ;; Spike-time: every request
+                                        ;; revalidates so cljs rebuilds
+                                        ;; show up without forcing the
+                                        ;; user to hard-refresh.
+                                        "Cache-Control" "no-cache, no-store, must-revalidate"
+                                        "Pragma"        "no-cache"
+                                        "Expires"       "0"}
                               :body    f}))
                     ctx))
                 ctx))))))}))
