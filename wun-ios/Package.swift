@@ -8,10 +8,16 @@ let package = Package(
         .macOS(.v12)
     ],
     products: [
-        .library(name: "Wun", targets: ["Wun"])
+        .library(name: "Wun", targets: ["Wun"]),
+        .executable(name: "wun-smoke", targets: ["WunSmoke"])
     ],
     targets: [
         .target(name: "Wun", path: "Sources/Wun"),
+        .executableTarget(
+            name: "WunSmoke",
+            dependencies: ["Wun"],
+            path: "Sources/WunSmoke"
+        ),
         .testTarget(
             name: "WunTests",
             dependencies: ["Wun"],

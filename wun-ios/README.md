@@ -10,22 +10,49 @@ swift build
 swift test
 ```
 
-## Phase 2.A status
+## Status
 
-**Wire-shape types only.** No SSE client, no renderer, no networking.
-The package exposes Codable/Equatable models that decode the JSON
-envelope a phase-2-aware server emits when asked for
-`Accept: application/json` (or queried with `?fmt=json` on `/wun`).
+Phase 2.A + 2.B landed. The package now does an end-to-end wire
+loop against a phase-2-aware server: connect to `/wun?fmt=json`,
+parse SSE frames, apply structural patches into a `TreeMirror`. No
+SwiftUI renderer yet; that's 2.C.
 
-| type        | role                                                             |
-|-------------|------------------------------------------------------------------|
-| `JSON`      | Closed recursive variant covering JSON's six shapes.             |
-| `WunNode`   | Hiccup-shaped tree node (text / number / bool / component).      |
-| `Patch`     | One `:replace`/`:insert`/`:remove` op against a child path.      |
-| `Envelope`  | The SSE patch envelope: `patches`, `status`, `state`, `resolves-intent`. |
+| type / actor | role                                                            |
+|--------------|-----------------------------------------------------------------|
+| `JSON`       | Closed recursive variant covering JSON's six shapes.            |
+| `WunNode`    | Hiccup-shaped tree node (text / number / bool / component).    |
+| `Patch`      | One `:replace`/`:insert`/`:remove` op against a child path.    |
+| `Envelope`   | The SSE patch envelope: `patches`, `status`, `state`, `resolves-intent`. |
+| `Diff`       | Pure path-aware patch applicator (Swift port of `wun.diff`).    |
+| `TreeMirror` | Actor holding the current tree + state, fed by envelopes.       |
+| `SSEClient`  | URLSession-bytes streaming + hand-rolled line splitter.         |
 
-Tests cover decoding a real envelope from the running server plus a
-`WunNode.from(json).toJSON()` round-trip.
+Tests: 10 across `EnvelopeTests` (decode + WunNode + JSON round-trip)
+and `DiffTests` (replace at root, deep replace, prop changes, insert,
+trailing remove, no-props indexing, multi-patch fold).
+
+End-to-end smoke executable lives at `Sources/WunSmoke`. Connect to
+a running server and watch frames flow:
+
+```bash
+cd ../wun-server && clojure -M:run    # in one terminal
+cd ../wun-ios    && swift run wun-smoke
+```
+
+Smoke output for `inc inc dec reset`:
+
+```
+[smoke] connected to http://localhost:8080/wun?fmt=json&caps=...
+[ok] resolves=- ops=[replace@[]] state={counter: 2}
+[ok] resolves=00000000 ops=[replace@[0, 0]] state={counter: 3}
+[ok] resolves=00000000 ops=[replace@[0, 0]] state={counter: 4}
+[ok] resolves=00000000 ops=[replace@[0, 0]] state={counter: 3}
+[ok] resolves=00000000 ops=[replace@[0, 0]] state={counter: 0}
+```
+
+Initial frame is a full `:replace` at root; subsequent broadcasts
+are single deep `:replace` at `[0, 0]` — the same minimal-patch
+shape the cljc differ produces for the web.
 
 ## Phase 2 plan (what comes next)
 

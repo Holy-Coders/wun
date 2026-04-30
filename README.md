@@ -223,6 +223,12 @@ identically.
     or `?fmt=json`) alongside transit-json; Swift package scaffolds
     the wire-shape types (`JSON`, `WunNode`, `Patch`, `Envelope`)
     with Codable + Equatable, no networking yet. *Done.*
+  - **2.B** Swift port of `wun.diff/apply-patches` (Hiccup-aware
+    indexing); `TreeMirror` actor; `SSEClient` with hand-rolled
+    byte-level line splitter (Foundation's `bytes.lines` collapses
+    empty lines, which SSE needs as frame terminators); `wun-smoke`
+    executable for end-to-end. iOS counter trail across server
+    intents matches the cljc smoke. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.
