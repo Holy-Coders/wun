@@ -229,6 +229,13 @@ identically.
     empty lines, which SSE needs as frame terminators); `wun-smoke`
     executable for end-to-end. iOS counter trail across server
     intents matches the cljc smoke. *Done.*
+  - **2.C** `WunComponent` registry + `WunView` SwiftUI driver +
+    SwiftUI renderers for `:wun/Stack` and `:wun/Text`. `TreeStore`
+    (`@MainActor` + `ObservableObject`) sits alongside the actor
+    `TreeMirror` so SwiftUI views can deref the tree reactively.
+    `WunFoundation.register(into:)` mirrors the cljc-side
+    bootstrap; user code registers components through the same
+    API. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

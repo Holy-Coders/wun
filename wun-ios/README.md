@@ -17,15 +17,20 @@ loop against a phase-2-aware server: connect to `/wun?fmt=json`,
 parse SSE frames, apply structural patches into a `TreeMirror`. No
 SwiftUI renderer yet; that's 2.C.
 
-| type / actor | role                                                            |
-|--------------|-----------------------------------------------------------------|
-| `JSON`       | Closed recursive variant covering JSON's six shapes.            |
-| `WunNode`    | Hiccup-shaped tree node (text / number / bool / component).    |
-| `Patch`      | One `:replace`/`:insert`/`:remove` op against a child path.    |
-| `Envelope`   | The SSE patch envelope: `patches`, `status`, `state`, `resolves-intent`. |
-| `Diff`       | Pure path-aware patch applicator (Swift port of `wun.diff`).    |
-| `TreeMirror` | Actor holding the current tree + state, fed by envelopes.       |
-| `SSEClient`  | URLSession-bytes streaming + hand-rolled line splitter.         |
+| type / actor       | role                                                           |
+|--------------------|----------------------------------------------------------------|
+| `JSON`             | Closed recursive variant covering JSON's six shapes.           |
+| `WunNode`          | Hiccup-shaped tree node (text / number / bool / component).   |
+| `Patch`            | One `:replace`/`:insert`/`:remove` op against a child path.   |
+| `Envelope`         | The SSE patch envelope: `patches`, `status`, `state`, `resolves-intent`. |
+| `Diff`             | Pure path-aware patch applicator (Swift port of `wun.diff`).   |
+| `TreeMirror`       | Actor variant holding tree + state. Non-UI consumers.          |
+| `TreeStore`        | `@MainActor` + `ObservableObject` variant for SwiftUI binding. |
+| `SSEClient`        | URLSession-bytes streaming + hand-rolled line splitter.        |
+| `Registry`         | Open `tag -> WunComponent` registry. Framework + user code share the same API. |
+| `WunComponent`     | `(props, children) -> AnyView` -- the registry's value type.   |
+| `WunView`          | SwiftUI `View` walking a `WunNode` through a `Registry`.       |
+| `WunFoundation`    | Bootstraps `:wun/*` renderers into a `Registry`.               |
 
 Tests: 10 across `EnvelopeTests` (decode + WunNode + JSON round-trip)
 and `DiffTests` (replace at root, deep replace, prop changes, insert,
