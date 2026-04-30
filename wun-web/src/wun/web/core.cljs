@@ -38,6 +38,18 @@
 (defn- set-status! [s]
   (when-let [el (status-el)] (set! (.-textContent el) s)))
 
+(defn- set-offline! [offline?]
+  ;; LiveView ships a `phx-disconnected` body class so apps can dim
+  ;; their UI during a reconnect. Same idea here -- the live UI is
+  ;; still on screen (we don't blow away `display-tree`), but it's
+  ;; visually attenuated so the user knows clicks won't take
+  ;; immediate effect.
+  (let [body (.-body js/document)
+        cl   (.-classList body)]
+    (if offline?
+      (.add cl "wun-offline")
+      (.remove cl "wun-offline"))))
+
 ;; ---------------------------------------------------------------------------
 ;; Top-level reagent component. Derefs display-tree (a reagent atom)
 ;; so reagent re-renders on every change.
@@ -75,18 +87,21 @@
           (js/console.info "wun: SSE connected"))
         (reset! was-connected? true)
         (set-status! "connected")
+        (set-offline! false)
         (bus/apply-envelope! (str->t (.-data ev)))))
     (.addEventListener src "open"
       (fn [_]
         (when-not @was-connected?
           (js/console.info "wun: SSE open"))
-        (set-status! "connected")))
+        (set-status! "connected")
+        (set-offline! false)))
     (.addEventListener src "error"
       (fn [_]
         (when @was-connected?
           (js/console.warn "wun: SSE disconnected; EventSource will retry"))
         (reset! was-connected? false)
-        (set-status! "disconnected (browser will retry)")))
+        (set-status! "disconnected (browser will retry)")
+        (set-offline! true)))
     (reset! es src)))
 
 ;; ---------------------------------------------------------------------------
@@ -104,6 +119,10 @@
 
 (defn ^:export init []
   (mount!)
+  ;; Hydrate from localStorage BEFORE opening the stream so the user
+  ;; sees last-known UI immediately on reload (Hotwire-snapshot-style)
+  ;; rather than a blank screen waiting for the first SSE frame.
+  (bus/hydrate-from-cache!)
   (bus/start-pending-gc!)
   (bus/install-popstate-handler!)
   (start-sse!))

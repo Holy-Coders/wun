@@ -109,6 +109,20 @@
                          (assoc-in m [event-ch :prior] tree)
                          m))))
 
+;; Per-connection meta cache. Mirrors :prior for the head-side of
+;; the wire: store the last meta map we sent so a no-op recompute
+;; doesn't ride every envelope. Comparing by value (=) is fine since
+;; meta maps are tiny.
+
+(defn prior-meta [event-ch]
+  (get-in @connections [event-ch :prior-meta]))
+
+(defn update-prior-meta! [event-ch meta]
+  (swap! connections (fn [m]
+                       (if (contains? m event-ch)
+                         (assoc-in m [event-ch :prior-meta] meta)
+                         m))))
+
 (defn closed?
   "True when `event-ch` has been closed (typically by Pedestal after
    the client disconnects). Reaches into core.async's impl protocol;

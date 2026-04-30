@@ -51,13 +51,29 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    init(baseURL: URL = URL(string: "http://localhost:8080")!) {
+    private let persistencePath: String
+
+    init(baseURL: URL = URL(string: "http://localhost:8080")!,
+         persistencePath: String = "/") {
+        self.persistencePath = persistencePath
+
         // Populate registries.
         WunFoundation.register(into: registry)
         WunExample.register(into: registry)
 
         // Resolve relative WebFrame URLs against this host.
         Wun.serverBase = baseURL
+
+        // Hot cache: hydrate the last-known tree from UserDefaults
+        // BEFORE we open the SSE stream so the user sees prior UI
+        // immediately on relaunch, not a blank canvas. The next
+        // server envelope reconciles any drift.
+        if let snap = Persistence.load(path: persistencePath) {
+            store.hydrate(tree: WunNode.from(snap.tree),
+                          state: snap.state,
+                          screenStack: snap.screenStack,
+                          meta: snap.meta)
+        }
 
         // Wire intents through this dispatcher. The conn-id provider
         // reads from the store's @Published connID so framework
@@ -101,8 +117,19 @@ final class AppViewModel: ObservableObject {
             },
             onEnvelope: { [weak self] envelope in
                 Task { @MainActor in
-                    self?.logEnvelope(envelope)
-                    self?.store.apply(envelope)
+                    guard let self else { return }
+                    self.logEnvelope(envelope)
+                    self.store.apply(envelope)
+                    // Persist snapshot synchronously on every envelope.
+                    // UserDefaults batches the writes, so this is cheap
+                    // even for high-frequency patches.
+                    Persistence.save(.init(
+                        tree: self.store.tree.toJSON(),
+                        state: self.store.state,
+                        screenStack: self.store.screenStack,
+                        meta: self.store.meta,
+                        savedAt: Date().timeIntervalSince1970
+                    ), path: self.persistencePath)
                 }
             }
         )

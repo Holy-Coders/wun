@@ -26,14 +26,20 @@ public final class TreeStore: ObservableObject {
     /// carries a `screen-stack` extra (initial frame, navigate, pop).
     @Published public private(set) var screenStack: [String] = []
 
+    /// Page meta from the server's `:meta` extra. Title is the most
+    /// commonly read field (NavigationView title); `meta` keeps the
+    /// rest available for whoever wants it.
+    @Published public private(set) var title: String?
+    @Published public private(set) var meta: JSON?
+
     public init(initial: JSON = .null) {
         self.tree = WunNode.from(initial)
     }
 
     /// Apply an SSE envelope: patches against the tree, mirror state,
-    /// pick up the server-assigned conn-id and screen-stack, remember
-    /// the resolved intent id (callers may use it to drop matching
-    /// pending entries in their dispatcher).
+    /// pick up the server-assigned conn-id, screen-stack, and meta,
+    /// remember the resolved intent id (callers may use it to drop
+    /// matching pending entries in their dispatcher).
     public func apply(_ envelope: Envelope) {
         if !envelope.patches.isEmpty {
             let raw = Diff.apply(tree.toJSON(), envelope.patches)
@@ -48,10 +54,33 @@ public final class TreeStore: ObservableObject {
         if let stack = envelope.screenStack {
             screenStack = stack
         }
+        if let m = envelope.meta {
+            meta = m
+            if let dict = m.objectValue,
+               case .string(let t) = dict["title"] ?? .null {
+                title = t
+            }
+        }
         lastResolvedIntent = envelope.resolvesIntent
     }
 
     public func reset(to node: WunNode) {
         tree = node
+    }
+
+    /// Hydrate from a previously-saved snapshot (cold start). Does NOT
+    /// publish through `apply(_:)`; the next server envelope will
+    /// reconcile any drift.
+    public func hydrate(tree: WunNode, state: JSON, screenStack: [String], meta: JSON?) {
+        self.tree = tree
+        self.state = state
+        self.screenStack = screenStack
+        if let m = meta {
+            self.meta = m
+            if let dict = m.objectValue,
+               case .string(let t) = dict["title"] ?? .null {
+                self.title = t
+            }
+        }
     }
 }

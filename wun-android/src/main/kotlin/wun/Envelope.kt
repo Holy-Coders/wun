@@ -26,6 +26,7 @@ data class Envelope(
     @SerialName("resolves-intent") val resolvesIntent: String? = null,
     @SerialName("conn-id")         val connId: String? = null,
     @SerialName("screen-stack")    val screenStack: List<String>? = null,
+    val meta: JsonElement? = null,
     val error: JsonElement? = null,
 ) {
     companion object {

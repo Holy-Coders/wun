@@ -81,7 +81,8 @@
   ([patches extras]
    (merge {:patches (vec patches) :status :ok}
           (some-> extras (select-keys [:resolves-intent :state
-                                       :conn-id :screen-stack])))))
+                                       :conn-id :screen-stack
+                                       :meta])))))
 
 (defn encode-envelope
   "Encode an envelope using the given wire `fmt` (`:transit` or `:json`)."

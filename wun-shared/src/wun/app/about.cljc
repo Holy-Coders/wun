@@ -6,6 +6,11 @@
 
 (defscreen :app/about
   {:path "/about"
+   :meta
+   (fn [_state]
+     {:title       "About · Wun"
+      :description "About this server-driven UI demo."
+      :theme-color "#1b6c3a"})
    :render
    (fn [state]
      [:wun/Stack {:gap 12 :padding 24}

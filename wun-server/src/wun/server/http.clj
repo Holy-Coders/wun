@@ -71,28 +71,38 @@
 
    Substitution + encoding happen per-channel: different clients may
    advertise different caps and request different wire formats.
-   Updates the stored prior on successful enqueue. On offer! failure,
-   evicts the connection iff its channel has actually closed (so
-   transient buffer-full conditions don't drop slow-but-alive
-   clients)."
+   Updates the stored prior + prior-meta on successful enqueue. On
+   offer! failure, evicts the connection iff its channel has
+   actually closed (so transient buffer-full conditions don't drop
+   slow-but-alive clients).
+
+   Meta (page title, description, theme-color, etc.) is computed
+   per-screen via the screen's optional `:meta` fn and only included
+   when it differs from what this connection last saw -- no wire
+   noise for an unchanged title."
   ([ch resolves-intent] (broadcast-to-channel! ch resolves-intent nil))
   ([ch resolves-intent extra-keys]
-   (let [screen-key (state/screen-key ch)
-         raw        (current-tree-for screen-key)
-         caps       (state/caps ch)
-         fmt        (state/fmt ch)
-         tree       (capabilities/substitute raw caps web-frame-src)
-         prior      (state/prior-tree ch)
-         patches    (diff/diff prior tree)]
-     (when (or (seq patches) resolves-intent (seq extra-keys))
+   (let [screen-key  (state/screen-key ch)
+         raw         (current-tree-for screen-key)
+         caps        (state/caps ch)
+         fmt         (state/fmt ch)
+         tree        (capabilities/substitute raw caps web-frame-src)
+         prior       (state/prior-tree ch)
+         patches     (diff/diff prior tree)
+         meta        (screens/render-meta screen-key @state/app-state)
+         prior-meta  (state/prior-meta ch)
+         meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})]
+     (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra)
        (let [env  (wire/patch-envelope patches
                                        (merge {:resolves-intent resolves-intent
                                                :state           @state/app-state}
+                                              meta-extra
                                               extra-keys))
              data (wire/encode-envelope fmt env)]
          (cond
            (a/offer! ch {:name "patch" :data data})
-           (state/update-prior-tree! ch tree)
+           (do (state/update-prior-tree! ch tree)
+               (when meta-extra (state/update-prior-meta! ch meta)))
 
            (state/closed? ch)
            (do (state/remove-connection! ch)

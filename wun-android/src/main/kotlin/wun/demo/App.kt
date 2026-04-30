@@ -48,8 +48,10 @@ import kotlinx.serialization.json.*
 import wun.Envelope
 import wun.IntentDispatcher
 import wun.LocalWunRegistry
+import wun.Persistence
 import wun.Registry
 import wun.SSEClient
+import wun.Snapshot
 import wun.TreeMirror
 import wun.Wun
 import wun.WunNode
@@ -68,11 +70,25 @@ fun main() = application {
         Registry().also { WunFoundation.register(it) }
     }
 
-    val mirror = remember { TreeMirror() }
+    // Hydrate from java.util.prefs BEFORE creating the mirror so the
+    // initial render shows last-known UI rather than a blank window.
+    // The first SSE envelope reconciles any drift.
+    val initialSnap = remember { Persistence.load(path = "/") }
+
+    val mirror = remember(initialSnap) {
+        TreeMirror().also { m ->
+            initialSnap?.let { snap ->
+                m.hydrate(tree = snap.tree, state = snap.state,
+                          screenStack = snap.screenStack,
+                          meta = snap.meta, title = snap.title)
+            }
+        }
+    }
     var status by remember { mutableStateOf("connecting…") }
-    var tree   by remember { mutableStateOf<WunNode>(WunNode.Null) }
-    var state  by remember { mutableStateOf<JsonElement>(JsonNull) }
-    var screenStack by remember { mutableStateOf(emptyList<String>()) }
+    var tree   by remember { mutableStateOf<WunNode>(initialSnap?.let { WunNode.fromJson(it.tree) } ?: WunNode.Null) }
+    var state  by remember { mutableStateOf<JsonElement>(initialSnap?.state ?: JsonNull) }
+    var screenStack by remember { mutableStateOf(initialSnap?.screenStack ?: emptyList()) }
+    var title  by remember { mutableStateOf(initialSnap?.title ?: "Wun") }
 
     val dispatcher = remember {
         IntentDispatcher(
@@ -100,6 +116,18 @@ fun main() = application {
                 tree        = WunNode.fromJson(mirror.tree)
                 state       = mirror.state
                 screenStack = mirror.screenStack
+                mirror.title?.let { title = it }
+                Persistence.save(
+                    Snapshot(
+                        tree        = mirror.tree,
+                        state       = mirror.state,
+                        screenStack = mirror.screenStack,
+                        meta        = mirror.meta,
+                        title       = mirror.title,
+                        savedAt     = System.currentTimeMillis(),
+                    ),
+                    path = "/",
+                )
             },
         )
     }
@@ -114,7 +142,7 @@ fun main() = application {
 
     val windowState = rememberWindowState(width = 540.dp, height = 640.dp)
     Window(onCloseRequest = ::exitApplication,
-           title = "Wun · phase 3 demo",
+           title = title,
            state = windowState) {
         CompositionLocalProvider(LocalWunRegistry provides registry) {
             Surface(status = status, tree = tree, state = state, stack = screenStack)

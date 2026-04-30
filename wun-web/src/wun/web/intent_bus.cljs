@@ -49,6 +49,8 @@
             [wun.diff           :as diff]
             [wun.intents        :as intents]
             [wun.screens        :as screens]
+            [wun.web.meta       :as wmeta]
+            [wun.web.persist    :as persist]
             [wun.web.renderers  :as renderers]))
 
 ;; ---------------------------------------------------------------------------
@@ -215,14 +217,27 @@
       (when-not (= cur path)
         (.pushState (.-history js/window) #js {} "" path)))))
 
+;; Last meta the server sent us, kept locally so we can persist it
+;; with the rest of the snapshot.
+(defonce last-meta (atom nil))
+
+(defn- persist-snapshot! []
+  (persist/save! {:confirmed-state @confirmed-state
+                  :confirmed-tree  @confirmed-tree
+                  :screen-stack    @screen-stack
+                  :meta            @last-meta}))
+
 (defn apply-envelope!
   "Reconcile a server envelope: maybe-bootstrap, apply patches against
    confirmed-tree, mirror confirmed-state, drop the resolved pending
    entry, optionally update the conn-id and screen-stack the server
-   sent for this connection, sync the browser URL to the visible
-   screen, and recompute the display."
+   sent for this connection, apply page meta (title / description /
+   theme-color) to the document head, sync the browser URL to the
+   visible screen, persist the snapshot to localStorage, and
+   recompute the display."
   [{cid    :conn-id
     stack  :screen-stack
+    meta   :meta
     :keys [patches state resolves-intent status error]}]
   (when (= status :error)
     (js/console.error "wun: server error" (clj->js error)))
@@ -240,9 +255,35 @@
     (swap! confirmed-tree diff/apply-patches patches))
   (when (some? state)
     (reset! confirmed-state state))
+  (when meta
+    (reset! last-meta meta)
+    (wmeta/apply-meta! meta))
   (when resolves-intent
     (swap! pending (fn [ps] (vec (remove #(= (:id %) resolves-intent) ps)))))
-  (recompute!))
+  (recompute!)
+  (persist-snapshot!))
+
+(defn hydrate-from-cache!
+  "On cold start, populate the local atoms from the last snapshot
+   localStorage holds for this path. Idempotent. Returns true iff we
+   found a snapshot -- callers can use that to decide whether to
+   render before the SSE stream connects."
+  []
+  (let [snap (persist/load)
+        {snap-state :confirmed-state
+         snap-tree  :confirmed-tree
+         snap-stack :screen-stack
+         snap-meta  :meta} snap]
+    (when snap-state (reset! confirmed-state snap-state))
+    (when snap-tree  (reset! confirmed-tree  snap-tree))
+    (when (seq snap-stack)
+      (let [normalized (mapv #(if (string? %) (keyword %) %) snap-stack)]
+        (reset! screen-stack normalized)))
+    (when snap-meta
+      (reset! last-meta snap-meta)
+      (wmeta/apply-meta! snap-meta))
+    (recompute!)
+    (some? snap)))
 
 ;; Wire the browser's popstate to a server-side pop so the back button
 ;; behaves like the in-app back button. We only call `pop!` if there's

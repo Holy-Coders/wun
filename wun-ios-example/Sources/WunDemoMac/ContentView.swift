@@ -25,6 +25,8 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(20)
                 }
+                .opacity(vm.status == "connected" ? 1.0 : 0.55)
+                .animation(.easeInOut(duration: 0.2), value: vm.status)
 
                 Divider()
                 stateBar
@@ -41,6 +43,9 @@ struct ContentView: View {
         // WunView(kid) without an explicit registry pick up the same
         // one the host wired up.
         .environment(\.wunRegistry, vm.registry)
+        // Server-driven page title -- mirrors LiveView's
+        // `assign(:page_title, …)` and Hotwire's <title> head merge.
+        .navigationTitle(store.title ?? "Wun")
         .frame(minHeight: 540)
     }
 

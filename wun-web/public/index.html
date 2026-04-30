@@ -20,6 +20,21 @@
       .wun-text--body { font-size: 15px; opacity: 0.75; margin: 0; }
       .wun-unknown { color: crimson; font-family: ui-monospace, monospace; }
       #status { font: 12px ui-monospace, monospace; opacity: 0.5; margin-top: 24px; }
+
+      /* LiveView-style offline signal: when the SSE stream is down
+         we add `wun-offline` to <body>. The last-known UI stays on
+         screen (no blanking) but visually attenuates so the user
+         knows their clicks won't go through right now. */
+      body.wun-offline #app { opacity: 0.55; transition: opacity 200ms ease; }
+      body.wun-offline::before {
+        content: "offline · reconnecting…";
+        position: fixed; top: 0; left: 0; right: 0;
+        padding: 6px 12px; text-align: center;
+        font: 12px ui-monospace, monospace;
+        background: #fff3d6; color: #7a5300;
+        border-bottom: 1px solid #f0d28a;
+        z-index: 9999;
+      }
     </style>
   </head>
   <body>

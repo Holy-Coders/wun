@@ -33,6 +33,13 @@
 
 (defscreen :counter/main
   {:path "/"
+   :meta
+   (fn [state]
+     {:title       (str "Counter " (:counter state 0) " · Wun")
+      :description "Server-driven counter demo for Wun."
+      :theme-color "#0a66c2"
+      :og          {:title (str "Counter at " (:counter state 0))
+                    :type  "website"}})
    :render
    (fn [state]
      [:wun/Stack {:gap 12 :padding 24}
