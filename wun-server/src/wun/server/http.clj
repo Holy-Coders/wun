@@ -35,10 +35,12 @@
             [wun.diff              :as diff]
             [wun.intents           :as intents]
             [wun.screens           :as screens]
+            [wun.server.html       :as wun-html]
             [wun.server.state      :as state]
             [wun.server.wire       :as wire])
   (:import  [java.io File]
             [java.net URLEncoder]
+            [java.util UUID]
             [java.util.concurrent Executors ScheduledExecutorService TimeUnit]))
 
 ;; ---------------------------------------------------------------------------
@@ -49,12 +51,14 @@
 
 (defn- web-frame-src
   "Build a relative URL the iOS / Android client can navigate to in a
-   WebFrame to render the component the native client lacks. Keeps
-   the URL pure ASCII via percent-encoding so the namespace `/`
-   survives Pedestal routing."
-  [component-key]
-  (let [piece (str (namespace component-key) "/" (name component-key))]
-    (str "/web-frames/" (URLEncoder/encode piece "UTF-8"))))
+   WebFrame to render the component the native client lacks. Stashes
+   the original subtree under a token so the /web-frames endpoint
+   can re-render it; URL is /web-frames/<urlencoded-key>/<token>."
+  [component-key tree]
+  (let [piece (str (namespace component-key) "/" (name component-key))
+        token (str (UUID/randomUUID))]
+    (state/stash-webframe! token tree)
+    (str "/web-frames/" (URLEncoder/encode piece "UTF-8") "/" token)))
 
 (defn- broadcast-to-channel!
   "Diff `ch`'s prior tree against the per-connection-substituted current
@@ -200,31 +204,32 @@
 ;; renderers, parameterised by component key, so the WebFrame is a
 ;; pixel-perfect facsimile of what the web client would draw.
 
-(defn- web-frame-html [component-key]
-  (str "<!doctype html>"
-       "<html lang='en'><head><meta charset='utf-8'>"
-       "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-       "<title>WebFrame: " component-key "</title>"
-       "<style>"
-       "html,body{margin:0;padding:0;font-family:ui-sans-serif,system-ui,sans-serif;}"
-       "body{padding:24px;color:#222;background:#fafafa;}"
-       ".tag{font-family:ui-monospace,monospace;background:#eaeaea;"
-            "padding:2px 6px;border-radius:4px;}"
-       "</style></head>"
-       "<body>"
-       "<h1>WebFrame fallback</h1>"
-       "<p>The native client doesn't ship a renderer for "
-       "<span class='tag'>:" component-key "</span> yet. "
-       "This HTML, served by wun-server's <code>/web-frames/</code> "
-       "endpoint, fills in until a renderer is registered "
-       "natively.</p>"
-       "</body></html>"))
-
 (defn- web-frame-handler [request]
-  (let [k (get-in request [:path-params :key])]
-    {:status  200
-     :headers {"Content-Type" "text/html; charset=utf-8"}
-     :body    (web-frame-html (or k ""))}))
+  (let [k     (get-in request [:path-params :key])
+        token (get-in request [:path-params :token])
+        tree  (state/webframe-tree token)]
+    (cond
+      (nil? token)
+      ;; Legacy /web-frames/<key> with no token (older clients) still
+      ;; gets a stub explanation rather than a 404.
+      {:status  200
+       :headers {"Content-Type" "text/html; charset=utf-8"}
+       :body    (str "<!doctype html><html><body style='font-family:system-ui;padding:24px;'>"
+                     "<h1>WebFrame fallback for <code>:" (or k "") "</code></h1>"
+                     "<p>No subtree token in URL.</p></body></html>")}
+
+      (nil? tree)
+      {:status  410
+       :headers {"Content-Type" "text/html; charset=utf-8"}
+       :body    (str "<!doctype html><html><body style='font-family:system-ui;padding:24px;'>"
+                     "<h1>WebFrame token expired</h1>"
+                     "<p>The server has evicted the cached subtree for token <code>"
+                     token "</code>. Reconnect to repopulate.</p></body></html>")}
+
+      :else
+      {:status  200
+       :headers {"Content-Type" "text/html; charset=utf-8"}
+       :body    (wun-html/render-document k tree)})))
 
 ;; ---------------------------------------------------------------------------
 ;; Static files
@@ -283,8 +288,8 @@
       :route-name :wun-stream]
      ["/intent" :post [(body-params/body-params) intent-handler]
       :route-name :wun-intent]
-     ["/web-frames/:key" :get web-frame-handler
-      :route-name :wun-web-frame]}))
+     ["/web-frames/:key"        :get web-frame-handler :route-name :wun-web-frame]
+     ["/web-frames/:key/:token" :get web-frame-handler :route-name :wun-web-frame-token]}))
 
 ;; ---------------------------------------------------------------------------
 ;; Service lifecycle

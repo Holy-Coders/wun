@@ -81,11 +81,12 @@
    trees because :wun/WebFrame is required to be in every client's
    caps list.
 
-   `src-builder`, when provided, is `(component-keyword) -> string` and
-   adds a `:src` prop pointing at a URL the client can navigate to in
-   a WebFrame. URL encoding is the caller's responsibility (different
-   platforms have different encoding APIs); we keep substitute pure
-   cljc by deferring it."
+   `src-builder`, when provided, is
+   `(component-keyword, original-subtree) -> string` and adds a
+   `:src` prop pointing at a URL the client can navigate to in a
+   WebFrame. URL encoding (and any caching of the original subtree
+   the URL refers to) is the caller's responsibility; we keep
+   substitute pure cljc by deferring those side effects."
   ([tree] (substitute tree {} nil))
   ([tree caps] (substitute tree caps nil))
   ([tree caps src-builder]
@@ -98,6 +99,6 @@
      (not (supported? caps (first tree)))
      (let [tag (first tree)]
        [:wun/WebFrame (cond-> {:missing tag}
-                        src-builder (assoc :src (src-builder tag)))])
+                        src-builder (assoc :src (src-builder tag tree)))])
 
      :else (substitute-children tree caps src-builder))))

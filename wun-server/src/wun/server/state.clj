@@ -59,3 +59,26 @@
     (- (count old) (count live))))
 
 (defn connection-count [] (count @connections))
+
+;; ---------------------------------------------------------------------------
+;; WebFrame subtree cache. capabilities/substitute hands the server the
+;; original subtree it just collapsed; we stash it under a token so the
+;; /web-frames/<key>/<token> endpoint can render the actual content as
+;; HTML for the WKWebView. FIFO eviction at a generous cap; production
+;; deployments that emit lots of WebFrames need a smarter strategy
+;; (per-screen TTL, weak refs to connection lifetimes, ...).
+
+(def ^:private webframe-cap 1024)
+(defonce webframes (atom clojure.lang.PersistentQueue/EMPTY))
+(defonce webframe-trees (atom {}))
+
+(defn stash-webframe! [token tree]
+  (swap! webframe-trees assoc token tree)
+  (let [q (swap! webframes conj token)]
+    (when (> (count q) webframe-cap)
+      (let [evict (peek @webframes)]
+        (swap! webframes pop)
+        (swap! webframe-trees dissoc evict)))))
+
+(defn webframe-tree [token]
+  (get @webframe-trees token))
