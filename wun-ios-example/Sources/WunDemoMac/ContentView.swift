@@ -12,27 +12,36 @@ import Wun
 struct ContentView: View {
     @EnvironmentObject var vm: AppViewModel
     @ObservedObject var store: TreeStore
+    @State private var showDevtools: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            statusBar
-            Divider()
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                statusBar
+                Divider()
 
-            ScrollView {
-                WunView(store.tree)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
+                ScrollView {
+                    WunView(store.tree)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(20)
+                }
+
+                Divider()
+                stateBar
             }
+            .frame(minWidth: 480)
 
-            Divider()
-            stateBar
+            if showDevtools {
+                Divider()
+                DevtoolsPanel(vm: vm, store: store)
+            }
         }
         // Plumb the registry to every descendant WunView so renderers
         // like WunStack / WunCard / WunList that recursively call
         // WunView(kid) without an explicit registry pick up the same
         // one the host wired up.
         .environment(\.wunRegistry, vm.registry)
-        .frame(minWidth: 480, minHeight: 540)
+        .frame(minHeight: 540)
     }
 
     private var statusBar: some View {
@@ -44,6 +53,11 @@ struct ContentView: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.secondary)
             Spacer()
+            Button(showDevtools ? "Hide devtools" : "Show devtools") {
+                showDevtools.toggle()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
             Text("Wun \(Wun.version)")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(.secondary)

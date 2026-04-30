@@ -16,15 +16,40 @@ import SwiftUI
 import Wun
 import WunExample
 
+struct EnvelopeLogEntry: Identifiable, Equatable {
+    let id = UUID()
+    let timestamp: Date
+    let opCount: Int
+    let resolves: String?
+    let summary: String
+}
+
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var status: String = "connecting…"
+    @Published var envelopeLog: [EnvelopeLogEntry] = []
 
     let store      = TreeStore()
     let registry   = Registry()
     let dispatcher: IntentDispatcher
 
     private var client: SSEClient?
+    private let logCapacity = 40
+
+    private func logEnvelope(_ envelope: Envelope) {
+        let summary = envelope.patches
+            .map { "\($0.op.rawValue)@\($0.path)" }
+            .joined(separator: " ")
+        envelopeLog.append(.init(
+            timestamp: Date(),
+            opCount:   envelope.patches.count,
+            resolves:  envelope.resolvesIntent.map { String($0.prefix(8)) },
+            summary:   summary.isEmpty ? "(no patches)" : summary
+        ))
+        if envelopeLog.count > logCapacity {
+            envelopeLog.removeFirst(envelopeLog.count - logCapacity)
+        }
+    }
 
     init(baseURL: URL = URL(string: "http://localhost:8080")!) {
         // Populate registries.
@@ -62,7 +87,10 @@ final class AppViewModel: ObservableObject {
                 }
             },
             onEnvelope: { [weak self] envelope in
-                Task { @MainActor in self?.store.apply(envelope) }
+                Task { @MainActor in
+                    self?.logEnvelope(envelope)
+                    self?.store.apply(envelope)
+                }
             }
         )
         client?.start()
