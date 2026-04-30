@@ -125,6 +125,34 @@
 ;; ---------------------------------------------------------------------------
 ;; run / dev
 
+(defn- port-in-use? [^long port]
+  ;; Try to bind a server socket; if BindException the port's taken.
+  (try
+    (let [s (java.net.ServerSocket. port)]
+      (.close s)
+      false)
+    (catch java.net.BindException _ true)
+    (catch Throwable _ false)))
+
+(defn- listener-pid [^long port]
+  ;; Best-effort identification of the process holding `port`. lsof
+  ;; isn't available everywhere, but on macOS / Linux it usually is.
+  ;; `-tiTCP:<port>` (one argument, no space) prints just the PID.
+  (let [{:keys [exit out]}
+        (p/sh ["lsof" (str "-tiTCP:" port) "-sTCP:LISTEN"]
+              {:out :string :err :string :continue true})]
+    (when (zero? exit)
+      (some-> out str/trim str/split-lines first not-empty))))
+
+(defn- bail-if-in-use! [^long port label]
+  (when (port-in-use? port)
+    (err "port " port " is already in use (needed for " label ")")
+    (when-let [pid (listener-pid port)]
+      (println (str "  PID " (c :bold pid) " is listening; kill it with:"))
+      (println (str "    kill " pid)))
+    (println (str "  or set things up so " label " runs on a free port."))
+    (System/exit 2)))
+
 (defn- run-server [root]
   (step "starting wun-server on :8080")
   (-> (p/process {:dir (str (fs/path root "wun-server"))
@@ -137,32 +165,46 @@
                   :inherit true}
                  "npx" "shadow-cljs" "watch" "app")))
 
+(defn- exit-code-of [proc]
+  ;; @proc waits and yields a process record; :exit holds the code.
+  (try (:exit @proc) (catch Throwable _ 1)))
+
 (defn- cmd-run [[target & _]]
   (let [root (repo-root)]
     (case target
-      "server"   @(run-server root)
-      "web"      @(run-shadow root)
+      "server"   (do (bail-if-in-use! 8080 "wun-server")
+                     (System/exit (exit-code-of (run-server root))))
+      "web"      (do (bail-if-in-use! 8081 "shadow-cljs http")
+                     (System/exit (exit-code-of (run-shadow root))))
       "ios"      (do (step "running iOS demo (swift run wun-demo-mac)")
-                     @(p/process {:dir (str (fs/path root "wun-ios-example"))
-                                  :inherit true}
-                                 "swift" "run" "wun-demo-mac"))
+                     (System/exit
+                      (exit-code-of
+                       (p/process {:dir (str (fs/path root "wun-ios-example"))
+                                   :inherit true}
+                                  "swift" "run" "wun-demo-mac"))))
       "android"  (do (step "running Compose Desktop demo")
-                     @(p/process {:dir (str (fs/path root "wun-android-example"))
-                                  :inherit true}
-                                 "gradle" "run"))
+                     (System/exit
+                      (exit-code-of
+                       (p/process {:dir (str (fs/path root "wun-android-example"))
+                                   :inherit true}
+                                  "gradle" "run"))))
       (do (err "unknown run target: " target)
           (println "  expected one of: server | web | ios | android")
           (System/exit 2)))))
 
 (defn- cmd-dev [_args]
   (let [root (repo-root)]
+    (bail-if-in-use! 8080 "wun-server")
+    (bail-if-in-use! 8081 "shadow-cljs http")
     (step "starting server + shadow-cljs together (Ctrl-C to stop both)")
     (let [server (run-server root)
           shadow (run-shadow root)]
-      ;; Wait on either; cancel the other on exit.
       (try
-        (let [code (try @server (catch Throwable _ 1))]
-          (warn "server exited with code " code))
+        ;; Whichever child exits first decides we're done.
+        (let [code (exit-code-of server)]
+          (if (zero? code)
+            (warn "wun-server exited cleanly")
+            (err  "wun-server exited with code " code)))
         (finally
           (p/destroy-tree shadow)
           (p/destroy-tree server))))))
