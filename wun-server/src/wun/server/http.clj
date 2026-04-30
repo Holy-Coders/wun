@@ -44,9 +44,8 @@
 ;; ---------------------------------------------------------------------------
 ;; Tree + broadcast
 
-(defn- current-tree []
-  ;; TODO(phase 1.D-routing): pick screen by request path.
-  (screens/render :counter/main @state/app-state))
+(defn- current-tree-for [screen-key]
+  (screens/render screen-key @state/app-state))
 
 (defn- web-frame-src
   "Build a relative URL the iOS / Android client can navigate to in a
@@ -67,12 +66,13 @@
    has actually closed (so transient buffer-full conditions don't drop
    slow-but-alive clients)."
   [ch resolves-intent]
-  (let [raw     (current-tree)
-        caps    (state/caps ch)
-        fmt     (state/fmt ch)
-        tree    (capabilities/substitute raw caps web-frame-src)
-        prior   (state/prior-tree ch)
-        patches (diff/diff prior tree)]
+  (let [screen-key (state/screen-key ch)
+        raw        (current-tree-for screen-key)
+        caps       (state/caps ch)
+        fmt        (state/fmt ch)
+        tree       (capabilities/substitute raw caps web-frame-src)
+        prior      (state/prior-tree ch)
+        patches    (diff/diff prior tree)]
     (when (or (seq patches) resolves-intent)
       (let [env  (wire/patch-envelope patches
                                       {:resolves-intent resolves-intent
@@ -109,25 +109,41 @@
     "transit" :transit
     :transit))
 
+(defn- resolve-screen-key
+  "Pick the screen to bind this SSE connection to. Honours an
+   explicit `?path=` query param first (so a multi-screen
+   connection-per-screen model works), then `?screen=` for clients
+   that prefer to address by screen key, then defaults to the
+   screen registered at `/`. Falls back to `:counter/main` if no
+   screen has the `/` path -- belt-and-braces for early bring-up."
+  [params]
+  (or (when-let [p (:path params)] (screens/lookup-by-path p))
+      (when-let [s (:screen params)] (keyword s))
+      (screens/lookup-by-path "/")
+      :counter/main))
+
 (defn- on-stream-ready
   "Called by Pedestal when an SSE connection is ready. Reads the
    client's advertised capabilities and wire format from either
    `X-Wun-Capabilities` / `X-Wun-Format` request headers (preferred,
    used by native clients) or `?caps=` / `?fmt=` query params (web
-   fallback because EventSource can't set custom headers).
+   fallback because EventSource can't set custom headers). Also reads
+   `?path=` to bind this connection to a particular screen.
 
    Registers the channel along with parsed metadata, then pushes the
    initial frame through the regular broadcast path."
   [event-ch ctx]
-  (let [request  (:request ctx)
-        headers  (:headers request)
-        params   (:query-params request)
-        caps-str (or (get headers "x-wun-capabilities") (:caps params))
-        fmt-str  (or (get headers "x-wun-format")       (:fmt params))
-        caps     (capabilities/parse caps-str)
-        fmt      (parse-fmt fmt-str)]
-    (state/add-connection! event-ch caps fmt)
-    (log/debugf "wun: connected fmt=%s caps=%s" (name fmt) (pr-str caps))
+  (let [request    (:request ctx)
+        headers    (:headers request)
+        params     (:query-params request)
+        caps-str   (or (get headers "x-wun-capabilities") (:caps params))
+        fmt-str    (or (get headers "x-wun-format")       (:fmt params))
+        caps       (capabilities/parse caps-str)
+        fmt        (parse-fmt fmt-str)
+        screen-key (resolve-screen-key params)]
+    (state/add-connection! event-ch caps fmt screen-key)
+    (log/debugf "wun: connected screen=%s fmt=%s caps=%s"
+                screen-key (name fmt) (pr-str caps))
     (broadcast-to-channel! event-ch nil)
     ctx))
 

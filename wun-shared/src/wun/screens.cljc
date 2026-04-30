@@ -13,6 +13,15 @@
 
 (defn lookup [k] (get @registry k))
 
+(defn lookup-by-path
+  "Return the screen key whose :path matches `path`, or nil. Phase
+   1.G uses literal path matching only; phase-2 routing with path
+   params (`/users/:id`) will need a real router."
+  [path]
+  (some (fn [[k spec]]
+          (when (= path (:path spec)) k))
+        @registry))
+
 (defn render
   "Run the registered :render fn for screen `k` against `state`. Returns
    nil if the screen isn't registered."

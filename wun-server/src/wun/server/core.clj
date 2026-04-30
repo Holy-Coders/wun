@@ -9,6 +9,7 @@
             ;; Side-effecting requires populate the open registries.
             wun.foundation.components
             wun.app.counter
+            wun.app.about
             myapp.components)
   (:gen-class))
 

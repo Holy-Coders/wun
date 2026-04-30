@@ -14,8 +14,11 @@
 ;; same code path as ongoing broadcasts.
 (defonce connections (atom {}))
 
-(defn add-connection! [event-ch caps fmt]
-  (swap! connections assoc event-ch {:prior nil :caps caps :fmt fmt}))
+(defn add-connection! [event-ch caps fmt screen-key]
+  (swap! connections assoc event-ch {:prior      nil
+                                     :caps       caps
+                                     :fmt        fmt
+                                     :screen-key screen-key}))
 
 (defn remove-connection! [event-ch]
   (swap! connections dissoc event-ch))
@@ -28,6 +31,9 @@
 
 (defn fmt [event-ch]
   (get-in @connections [event-ch :fmt]))
+
+(defn screen-key [event-ch]
+  (get-in @connections [event-ch :screen-key]))
 
 (defn update-prior-tree! [event-ch tree]
   (swap! connections (fn [m]
