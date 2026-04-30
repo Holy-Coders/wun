@@ -5,7 +5,17 @@
 
 set -euo pipefail
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Resolve the script's real location even when invoked through a
+# symlink (the installer puts one at ~/.local/bin/wun or
+# /usr/local/bin/wun pointing back at the checkout). macOS ships BSD
+# readlink without `-f`, so walk the chain manually.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  LINK_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$LINK_DIR/$SOURCE"
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 ROOT="$( cd "$DIR/.." && pwd )"
 SCRIPT="$ROOT/cli/wun.bb"
 
