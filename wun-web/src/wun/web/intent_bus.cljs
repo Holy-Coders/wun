@@ -42,11 +42,14 @@
    pending-ttl-ms. POST failures that the client didn't catch (rare
    with fetch's promise rejection, but possible) would otherwise
    leave a permanent ghost in pending; the TTL bounds the damage."
-  (:require [cognitect.transit :as transit]
-            [reagent.core      :as r]
-            [wun.diff          :as diff]
-            [wun.intents       :as intents]
-            [wun.screens       :as screens]))
+  (:require [cognitect.transit  :as transit]
+            [reagent.core       :as r]
+            [wun.capabilities   :as capabilities]
+            [wun.components     :as components]
+            [wun.diff           :as diff]
+            [wun.intents        :as intents]
+            [wun.screens        :as screens]
+            [wun.web.renderers  :as renderers]))
 
 ;; ---------------------------------------------------------------------------
 ;; Config
@@ -81,8 +84,28 @@
           @confirmed-state
           @pending))
 
-(defn recompute! []
-  (reset! display-tree (screens/render screen-key (predicted-state))))
+(defn- client-caps
+  "The same caps map the client advertises on the SSE URL. Built
+   from the web renderer registry; versions read from the shared
+   component registry's `:since` (defaults to 1)."
+  []
+  (into {} (for [k (renderers/registered)]
+             [k (or (:since (components/lookup k)) 1)])))
+
+(defn recompute!
+  "Re-derive display-tree by:
+     1. running the screen's render fn against the predicted state
+     2. applying capability substitution against the client's own
+        cap profile -- otherwise the locally-rendered tree (used for
+        optimistic UI) bypasses the substitution that only the
+        server's broadcast goes through, and components like
+        :myapp/Greeting that the client can't render show up as
+        literal :myapp/Greeting elements (and fall through to the
+        unknown-renderer placeholder) instead of as :wun/WebFrame
+        fallbacks."
+  []
+  (let [tree (screens/render screen-key (predicted-state))]
+    (reset! display-tree (capabilities/substitute tree (client-caps)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Transit + POST
