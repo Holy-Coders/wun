@@ -48,3 +48,71 @@
    :fallback :none
    :ios      "WunWebFrame"
    :android  "WunWebFrame"})
+
+(defcomponent :wun/Image
+  {:since    1
+   :schema   [:map
+              [:src :string]
+              [:alt  {:optional true} :string]
+              [:size {:optional true} :int]]
+   :loading  :shimmer
+   :fallback :web
+   :ios      "WunImage"
+   :android  "WunImage"})
+
+(defcomponent :wun/Card
+  {:since    1
+   :schema   [:map
+              [:title {:optional true} :string]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunCard"
+   :android  "WunCard"})
+
+(defcomponent :wun/Avatar
+  {:since    1
+   :schema   [:map
+              [:src      {:optional true} :string]
+              [:initials {:optional true} :string]
+              [:size     {:optional true} :int]]
+   :loading  :shimmer
+   :fallback :web
+   :ios      "WunAvatar"
+   :android  "WunAvatar"})
+
+(defcomponent :wun/Input
+  {:since    1
+   :schema   [:map
+              [:value       {:optional true} :string]
+              [:placeholder {:optional true} :string]
+              [:on-change   {:optional true} :wun/intent-ref]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunInput"
+   :android  "WunInput"})
+
+(defcomponent :wun/List
+  {:since    1
+   :schema   [:map]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunList"
+   :android  "WunList"})
+
+(defcomponent :wun/Spacer
+  {:since    1
+   :schema   [:map
+              [:size {:optional true} :int]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunSpacer"
+   :android  "WunSpacer"})
+
+(defcomponent :wun/ScrollView
+  {:since    1
+   :schema   [:map
+              [:direction {:optional true} [:enum :vertical :horizontal]]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunScrollView"
+   :android  "WunScrollView"})

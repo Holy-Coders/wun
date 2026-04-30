@@ -1,13 +1,26 @@
-// Phase 2.A scaffold. Real SSE client + tree mirror land in 2.B; the
-// component registry + SwiftUI renderers in 2.C. Today this module
-// exposes only the wire-shape types (JSON, WunNode, Patch, Envelope)
-// so a host app or test can decode envelopes received over HTTP.
+// Top-level Wun namespace + global intent dispatcher hook.
 //
-// See ../../README.md and the project brief at the repo root.
+// `intentDispatcher` is the closure that foundational renderers
+// (Button, Input, etc.) call when the user fires an intent. It's a
+// `@MainActor` global because there's only ever one wire connection
+// per process, and the alternative -- threading the dispatcher
+// through SwiftUI Environment all the way down -- would inflate
+// every renderer's signature for negligible win. Phase 2.E plugs in
+// a real implementation that POSTs JSON to /intent.
 
 import Foundation
 
 public enum Wun {
-    public static let version = "0.1.0-phase2a"
+    public static let version = "0.1.0-phase2d"
     public static let supportedOps: Set<PatchOp> = [.replace, .insert, .remove]
+
+    /// Called by Button/Input/etc. when an intent is fired in the UI.
+    /// Set this from your host app at startup. Defaults to a no-op
+    /// that prints a warning so missing wiring is visible in dev.
+    public static var intentDispatcher: @MainActor (
+        _ intent: String,
+        _ params: [String: JSON]
+    ) -> Void = { intent, _ in
+        print("[wun] no intent dispatcher set; dropped \(intent)")
+    }
 }

@@ -7,7 +7,7 @@ import SwiftUI
 public enum WunText {
     public static let render: WunComponent = { props, children in
         let variant = props["variant"]?.stringValue ?? "body"
-        let text    = WunText.flatten(children)
+        let text    = WunChildren.flatten(children)
 
         switch variant {
         case "h1":
@@ -21,24 +21,5 @@ public enum WunText {
                 .font(.system(size: 15))
                 .opacity(0.85))
         }
-    }
-
-    private static func flatten(_ children: [WunNode]) -> String {
-        children.compactMap { node -> String? in
-            switch node {
-            case .text(let s):   return s
-            case .number(let n): return formatNumber(n)
-            case .bool(let b):   return String(b)
-            default:             return nil
-            }
-        }.joined()
-    }
-
-    private static func formatNumber(_ n: Double) -> String {
-        if n.truncatingRemainder(dividingBy: 1) == 0,
-           abs(n) < Double(Int64.max) {
-            return String(Int64(n))
-        }
-        return String(n)
     }
 }

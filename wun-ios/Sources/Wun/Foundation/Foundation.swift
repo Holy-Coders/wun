@@ -12,10 +12,17 @@ import Foundation
 
 public enum WunFoundation {
     public static func register(into registry: Registry) {
-        registry.register("wun/Stack", WunStack.render)
-        registry.register("wun/Text",  WunText.render)
-        // Phase 2.D adds Image, Button, Card, Avatar, Input, List,
-        // Spacer, ScrollView. WebFrame lands in 2.F.
+        registry.register("wun/Stack",      WunStack.render)
+        registry.register("wun/Text",       WunText.render)
+        registry.register("wun/Image",      WunImage.render)
+        registry.register("wun/Button",     WunButton.render)
+        registry.register("wun/Card",       WunCard.render)
+        registry.register("wun/Avatar",     WunAvatar.render)
+        registry.register("wun/Input",      WunInput.render)
+        registry.register("wun/List",       WunList.render)
+        registry.register("wun/Spacer",     WunSpacer.render)
+        registry.register("wun/ScrollView", WunScrollView.render)
+        // `:wun/WebFrame` lands in 2.F via Hotwire Native.
     }
 
     public static func registerDefaults() {

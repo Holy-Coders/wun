@@ -18,25 +18,45 @@ final class RegistryTests: XCTestCase {
         XCTAssertEqual(r.registered(), ["myapp/Card", "wun/Stack", "wun/Text"])
     }
 
-    func testFoundationRegistersStackAndText() {
+    func testFoundationRegistersAllPhase2DComponents() {
         let r = Registry()
         WunFoundation.register(into: r)
-        XCTAssertNotNil(r.lookup("wun/Stack"))
-        XCTAssertNotNil(r.lookup("wun/Text"))
-        XCTAssertNil(r.lookup("wun/Button"),
-                     "phase 2.D adds Button, Image, Card, ...; today they're not registered")
+        let expected = [
+            "wun/Stack", "wun/Text", "wun/Image", "wun/Button",
+            "wun/Card", "wun/Avatar", "wun/Input", "wun/List",
+            "wun/Spacer", "wun/ScrollView",
+        ]
+        for tag in expected {
+            XCTAssertNotNil(r.lookup(tag), "\(tag) should be registered")
+        }
+        // :wun/WebFrame lands in 2.F via Hotwire Native.
+        XCTAssertNil(r.lookup("wun/WebFrame"),
+                     "WebFrame is registered in 2.F; not yet")
     }
 
     /// Renderers are `(props, children) -> AnyView`. We can't easily
     /// assert what the resulting SwiftUI view tree *looks like* without
     /// pulling in a heavyweight view-inspector dep, but we can verify
-    /// the renderer doesn't crash on an empty payload, which is enough
-    /// to catch obvious type errors in the Stack/Text expressions.
+    /// every foundational renderer constructs without crashing on a
+    /// representative payload, which catches obvious type errors in
+    /// the SwiftUI expressions.
     func testFoundationalRenderersDoNotCrash() {
         _ = WunStack.render([:],                                  [])
         _ = WunStack.render(["direction": .string("row")],        [])
-        _ = WunStack.render(["gap": .int(8), "padding": .int(12)], [.text("hi")])
         _ = WunText.render([:],                                   [.text("hello")])
         _ = WunText.render(["variant": .string("h1")],            [.text("Counter: 1")])
+        _ = WunImage.render(["src": .string("https://example.com/x.png")], [])
+        _ = WunButton.render(
+                ["on-press": .object(["intent": .string("counter/inc"),
+                                      "params": .object([:])])],
+                [.text("+")])
+        _ = WunCard.render(["title": .string("Hi")], [.text("body")])
+        _ = WunAvatar.render(["initials": .string("AT"), "size": .int(48)], [])
+        _ = WunInput.render(["value": .string(""), "placeholder": .string("type")], [])
+        _ = WunList.render([:],                                   [.text("a"), .text("b")])
+        _ = WunSpacer.render([:],                                 [])
+        _ = WunSpacer.render(["size": .int(16)],                  [])
+        _ = WunScrollView.render([:],                             [.text("scrolled")])
+        _ = WunScrollView.render(["direction": .string("horizontal")], [])
     }
 }

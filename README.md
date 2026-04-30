@@ -236,6 +236,13 @@ identically.
     `WunFoundation.register(into:)` mirrors the cljc-side
     bootstrap; user code registers components through the same
     API. *Done.*
+  - **2.D** the rest of the brief's foundational vocabulary --
+    `:wun/Image`, `:wun/Button`, `:wun/Card`, `:wun/Avatar`,
+    `:wun/Input`, `:wun/List`, `:wun/Spacer`, `:wun/ScrollView` --
+    each as a SwiftUI renderer in `Foundation/`. `Wun.intentDispatcher`
+    is the global hook Button/Input fire when the user acts; phase
+    2.E plugs in a real POST. iOS client now advertises 11 caps; the
+    server passes the tree through without substitution. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.
