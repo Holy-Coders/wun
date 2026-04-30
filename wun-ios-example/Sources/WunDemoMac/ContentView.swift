@@ -14,7 +14,7 @@ struct ContentView: View {
             Divider()
 
             ScrollView {
-                WunView(vm.store.tree, registry: vm.registry)
+                WunView(vm.store.tree)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
             }
@@ -22,6 +22,11 @@ struct ContentView: View {
             Divider()
             stateBar
         }
+        // Plumb the registry to every descendant WunView so renderers
+        // like WunStack / WunCard / WunList that recursively call
+        // WunView(kid) without an explicit registry pick up the same
+        // one the host wired up.
+        .environment(\.wunRegistry, vm.registry)
         .frame(minWidth: 480, minHeight: 540)
     }
 
