@@ -1,24 +1,22 @@
 // Open component registry. Each component keyword (a namespaced
 // string like "wun/Stack" or "myapp/RichEditor") maps to a
-// platform-specific renderer. The `WunComponent` typealias lives
-// here as a placeholder; phase 3.C swaps in a real Compose
-// signature `(Modifier, Map<String, JsonElement>, List<WunNode>) ->
-// (@Composable () -> Unit)` once we have a UI host.
-//
-// Until then renderers register as plain `Any` opaque tokens so
-// downstream code can list / look them up.
+// `WunComponent` -- a function of (props, children) that returns a
+// composable. Framework code and user code register through the
+// same `register` API; the registry doesn't distinguish the two,
+// mirroring the cljc `wun.components/registry`.
 
 package wun
 
 class Registry {
     private val lock = Any()
-    private val components = mutableMapOf<String, Any>()
+    private val components = mutableMapOf<String, WunComponent>()
 
-    fun register(tag: String, renderer: Any) {
+    fun register(tag: String, renderer: WunComponent) {
         synchronized(lock) { components[tag] = renderer }
     }
 
-    fun lookup(tag: String): Any? = synchronized(lock) { components[tag] }
+    fun lookup(tag: String): WunComponent? =
+        synchronized(lock) { components[tag] }
 
     fun registered(): List<String> =
         synchronized(lock) { components.keys.sorted() }

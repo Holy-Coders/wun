@@ -293,6 +293,12 @@ identically.
     `IntentDispatcher`, `wun-android/.../Smoke.kt` runnable via
     `gradle run`. Same intent / SSE round-trip the Swift smoke
     does. *Done.*
+  - **3.C** Compose Multiplatform Desktop renderers for the full
+    foundational vocabulary, plus `wun.demo.App` -- a `gradle run`
+    -launchable window that hosts `WunView` against a live
+    `TreeStore`. `WunComponent` is a `@Composable` function type,
+    `LocalWunRegistry` propagates the host's registry through the
+    composition tree. *Done.*
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.
 - **Phase 6** -- hardening, ecosystem, theming, hot reload, starter
