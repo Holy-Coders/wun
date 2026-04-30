@@ -481,6 +481,72 @@
 
 ;; ---------------------------------------------------------------------------
 ;; new <kind> <name>
+;;
+;; Templates use the literal placeholder `myapp` in file contents and
+;; directory names, and `MyApp` (PascalCase) wherever Swift/Kotlin
+;; wants type-style names. After copying we rewrite both forms in
+;; place so the user gets a project named after them, not myapp.
+;;
+;; Project names must be a valid Clojure ns / Kotlin package: lower
+;; ASCII alpha + digits, no separators. Hyphenated names are out of
+;; scope for now -- they require different forms for Clojure
+;; (hyphen-keep) vs Kotlin packages (no separator), and the simple
+;; substitution can't tell which is which.
+
+(def ^:private name-pattern #"[a-z][a-z0-9]*")
+
+(defn- valid-app-name? [s]
+  (boolean (and s (re-matches name-pattern s))))
+
+(defn- pascalize [s]
+  (str (str/upper-case (subs s 0 1)) (subs s 1)))
+
+(def ^:private text-extensions
+  #{"clj" "cljc" "cljs" "edn" "swift" "kt" "kts"
+    "html" "css" "js" "json" "md" "yml" "yaml"
+    "sh" "bb" "txt" "gradle" "gitignore"})
+
+(defn- text-file? [^java.nio.file.Path p]
+  (let [name (str (fs/file-name p))]
+    (or (text-extensions (some-> (re-find #"\.([^.]+)$" name) second))
+        (#{".gitignore" "Package.swift"} name))))
+
+(defn- substitute-content! [path slug pascal]
+  (try
+    (let [orig (slurp (str path))
+          ;; Order matters: replace the PascalCase form first (it's
+          ;; longer + more specific), then the lowercase form. Both
+          ;; placeholders are case-sensitive so they don't collide.
+          new  (-> orig
+                   (str/replace #"MyApp" pascal)
+                   (str/replace #"myapp" slug))]
+      (when (not= orig new)
+        (spit (str path) new)))
+    (catch Throwable e
+      (warn "skipped " (str path) ": " (.getMessage e)))))
+
+(defn- rewrite-tree! [^String dst slug pascal]
+  ;; 1. Substitute in every text file.
+  (doseq [p (fs/glob dst "**")
+          :when (and (fs/regular-file? p) (text-file? p))]
+    (substitute-content! p slug pascal))
+  ;; 2. Rename templated directories (depth-first so parent renames
+  ;;    don't invalidate child paths). The template uses two literal
+  ;;    dir names: `myapp` (Clojure ns dir / Kotlin pkg dir) and
+  ;;    `MyAppDemo` (Swift target dir).
+  (let [renames {"myapp"      slug
+                 "MyAppDemo"  (str pascal "Demo")}
+        dirs (->> (fs/glob dst "**")
+                  (filter fs/directory?)
+                  ;; Depth-descending so we rename children before parents.
+                  (sort-by #(- (count (str %)))))]
+    (doseq [d dirs
+            :let [n (str (fs/file-name d))
+                  new-name (renames n)]
+            :when (and new-name (not= new-name n))]
+      (let [target (fs/path (fs/parent d) new-name)]
+        (when-not (fs/exists? target)
+          (fs/move (str d) (str target)))))))
 
 (defn- copy-template! [template-dir name]
   (let [root (repo-root)
@@ -495,26 +561,37 @@
     (ok "created " (str dst))
     dst))
 
-(defn- cmd-new-app [[name & _]]
+(defn- bail-if-bad-name! [name kind]
   (when (or (not name) (str/blank? name))
-    (err "usage: wun new app <app-name>") (System/exit 2))
-  (let [dst (copy-template! "app" name)]
+    (err "usage: wun new " kind " <name>") (System/exit 2))
+  (when-not (valid-app-name? name)
+    (err "invalid name " (pr-str name) " -- must match " (str name-pattern))
+    (println "  (lowercase ASCII letter followed by letters and digits;")
+    (println "   no hyphens, dots, or underscores in the name)")
+    (System/exit 2)))
+
+(defn- cmd-new-app [[name & _]]
+  (bail-if-bad-name! name "app")
+  (let [dst    (copy-template! "app" name)
+        pascal (pascalize name)]
+    (rewrite-tree! (str dst) name pascal)
     (println)
     (println "  next steps:")
-    (println "    cd" name)
+    (println (str "    cd " name))
     (println "    npm install                  # shadow-cljs needs node deps")
     (println "    wun dev                      # server + cljs watch together")
     (println "    open http://localhost:8081")
     (println)
     (println "  the template assumes wun is a sibling clone -- see the")
-    (println "  README in" (str dst) "to switch to remote refs.")))
+    (println (str "  README in " (str dst) " to switch to remote refs."))))
 
 (defn- cmd-new-pack [[name & _]]
-  (when (or (not name) (str/blank? name))
-    (err "usage: wun new pack <pack-name>") (System/exit 2))
-  (let [dst (copy-template! "component-pack" name)]
+  (bail-if-bad-name! name "pack")
+  (let [dst    (copy-template! "component-pack" name)
+        pascal (pascalize name)]
+    (rewrite-tree! (str dst) name pascal)
     (println)
-    (println "  next steps: cd" name "&& open README.md to fill in the renderers")
+    (println (str "  next steps: cd " name " && open README.md to fill in the renderers"))
     dst))
 
 (defn- cmd-new [args]
