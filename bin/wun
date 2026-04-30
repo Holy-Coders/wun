@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Wun developer CLI launcher.
+#
+# Add to PATH:  export PATH="$PWD/bin:$PATH"
+
+set -euo pipefail
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ROOT="$( cd "$DIR/.." && pwd )"
+SCRIPT="$ROOT/cli/wun.bb"
+
+if ! command -v bb >/dev/null 2>&1; then
+  echo "wun: babashka not on PATH" >&2
+  echo "    install with: brew install borkdude/brew/babashka" >&2
+  exit 127
+fi
+
+exec bb "$SCRIPT" "$@"

@@ -1,0 +1,91 @@
+(ns wun.server.wire
+  "Wire format helpers. Phase 2 introduces JSON for native clients
+   alongside transit-json for the web. Patches still come from
+   wun.diff; this namespace is just (de)serialisation + envelope
+   construction.
+
+   Wire shape on JSON: keywords are encoded as namespaced strings
+   (`:wun/Stack` -> `\"wun/Stack\"`), UUIDs as strings, the rest of
+   Clojure data structures map naturally onto JSON. The shape of the
+   envelope and the Hiccup tree is identical to the transit version;
+   only the encoding differs."
+  (:require [cognitect.transit :as transit]
+            [clojure.data.json :as json]
+            [clojure.walk      :as walk])
+  (:import  [java.io ByteArrayInputStream ByteArrayOutputStream]))
+
+;; ---------------------------------------------------------------------------
+;; Transit
+
+(defn write-transit-json [v]
+  (let [out (ByteArrayOutputStream. 1024)
+        w   (transit/writer out :json)]
+    (transit/write w v)
+    (.toString out "UTF-8")))
+
+(defn read-transit-json [s]
+  (let [in (ByteArrayInputStream. (.getBytes s "UTF-8"))
+        r  (transit/reader in :json)]
+    (transit/read r)))
+
+;; ---------------------------------------------------------------------------
+;; JSON
+
+(defn- kw->str [k]
+  (if-let [ns- (namespace k)]
+    (str ns- "/" (name k))
+    (name k)))
+
+(defn- prepare-for-json
+  "Walk the structure and convert keywords + UUIDs to strings, so
+   data.json's encoder sees only natively-supported types. Necessary
+   because data.json's `:value-fn` callback only fires for *map*
+   values, not for keywords sitting inside vectors (which is exactly
+   where Hiccup component tags live)."
+  [v]
+  (walk/postwalk
+   (fn [x]
+     (cond
+       (keyword? x) (kw->str x)
+       (uuid? x)    (str x)
+       :else        x))
+   v))
+
+(defn write-json [v]
+  (json/write-str (prepare-for-json v)))
+
+(defn read-json [s]
+  ;; Keys come back as keywords (`\"foo/bar\"` -> `:foo/bar`); values
+  ;; stay as strings -- callers convert known-keyword fields like
+  ;; `:intent` themselves.
+  (json/read-str s :key-fn keyword))
+
+;; ---------------------------------------------------------------------------
+;; Envelopes
+
+(defn patch-envelope
+  "Build the SSE envelope: a (possibly empty) `:patches` vector and
+   `:status :ok`, plus optional `extras` keys:
+
+     :resolves-intent  the UUID of the intent this envelope confirms
+     :state            current screen state, mirrored client-side so
+                       optimistic morphs can predict against the same
+                       value the server saw
+     :conn-id          a server-assigned id the client echoes on
+                       /intent POSTs so the server can route framework
+                       intents (navigate / pop) to the right connection
+     :screen-stack     vector of screen keys for this connection; top
+                       is the currently-rendered screen. Updated when
+                       the client (or a server-side rule) pushes / pops"
+  ([patches] (patch-envelope patches nil))
+  ([patches extras]
+   (merge {:patches (vec patches) :status :ok}
+          (some-> extras (select-keys [:resolves-intent :state
+                                       :conn-id :screen-stack])))))
+
+(defn encode-envelope
+  "Encode an envelope using the given wire `fmt` (`:transit` or `:json`)."
+  [fmt envelope]
+  (case fmt
+    :json    (write-json envelope)
+    (write-transit-json envelope)))

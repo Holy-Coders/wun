@@ -1,0 +1,5 @@
+;; wun-shared: cljc library shared between wun-server (clj) and wun-web (cljs).
+;; Pure data + pure-fn registries + diff + Malli schema validation.
+
+{:paths ["src"]
+ :deps  {metosin/malli {:mvn/version "0.16.4"}}}
