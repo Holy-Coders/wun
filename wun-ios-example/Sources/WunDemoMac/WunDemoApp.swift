@@ -13,7 +13,12 @@ struct WunDemoApp: SwiftUI.App {
 
     var body: some Scene {
         WindowGroup("Wun · phase 2 demo") {
-            ContentView()
+            // We observe TreeStore directly here because AppViewModel
+            // holds it as a plain `let` property -- @Published
+            // notifications fire on the inner object, not on the
+            // outer ObservableObject, so a view that only watches
+            // `vm` would miss them.
+            ContentView(store: vm.store)
                 .environmentObject(vm)
         }
     }

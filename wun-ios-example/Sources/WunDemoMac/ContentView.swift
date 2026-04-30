@@ -1,12 +1,17 @@
 // The main window's root view. Renders the live Wun tree via WunView,
 // surfaces the SSE connection status, and mirrors the screen state at
 // the bottom for quick observation during dev.
+//
+// We observe both `vm` (for status) AND `store` (for tree + state
+// updates) because TreeStore's @Published notifications go through
+// its own objectWillChange, not through AppViewModel's.
 
 import SwiftUI
 import Wun
 
 struct ContentView: View {
     @EnvironmentObject var vm: AppViewModel
+    @ObservedObject var store: TreeStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,7 +19,7 @@ struct ContentView: View {
             Divider()
 
             ScrollView {
-                WunView(vm.store.tree)
+                WunView(store.tree)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
             }
@@ -49,11 +54,11 @@ struct ContentView: View {
 
     private var stateBar: some View {
         HStack {
-            Text("state: \(describe(vm.store.state))")
+            Text("state: \(describe(store.state))")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(.secondary)
             Spacer()
-            if let id = vm.store.lastResolvedIntent {
+            if let id = store.lastResolvedIntent {
                 Text("last resolved: \(id.prefix(8))")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(.secondary)
