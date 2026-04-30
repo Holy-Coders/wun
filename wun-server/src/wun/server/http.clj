@@ -40,7 +40,6 @@
             [wun.server.wire       :as wire])
   (:import  [java.io File]
             [java.net URLEncoder]
-            [java.util UUID]
             [java.util.concurrent Executors ScheduledExecutorService TimeUnit]))
 
 ;; ---------------------------------------------------------------------------
@@ -51,12 +50,16 @@
 
 (defn- web-frame-src
   "Build a relative URL the iOS / Android client can navigate to in a
-   WebFrame to render the component the native client lacks. Stashes
-   the original subtree under a token so the /web-frames endpoint
-   can re-render it; URL is /web-frames/<urlencoded-key>/<token>."
+   WebFrame to render the component the native client lacks. Token
+   is content-addressed (hex of the subtree's hash) so identical
+   subtrees produce identical tokens -- otherwise diff against the
+   prior tree would emit a fresh `:replace` for every broadcast as
+   the URL churned. Stashes the subtree under that token so the
+   /web-frames endpoint can re-render it; URL is
+   /web-frames/<urlencoded-key>/<token>."
   [component-key tree]
   (let [piece (str (namespace component-key) "/" (name component-key))
-        token (str (UUID/randomUUID))]
+        token (Long/toHexString (Math/abs (long (hash tree))))]
     (state/stash-webframe! token tree)
     (str "/web-frames/" (URLEncoder/encode piece "UTF-8") "/" token)))
 

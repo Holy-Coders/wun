@@ -285,6 +285,14 @@ identically.
     through the installed `IntentDispatcher`, server confirms via
     SSE, the on-screen counter updates. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
+  - **3.A** Gradle/Kotlin scaffold + wire-shape types
+    (`WunNode`, `Patch`, `Envelope`) + `Diff` (Kotlin port of the
+    cljc differ). 10/10 tests mirror the Swift `EnvelopeTests` +
+    `DiffTests`. *Done.*
+  - **3.B** OkHttp-sse `SSEClient`, `TreeMirror`, `Registry`,
+    `IntentDispatcher`, `wun-android/.../Smoke.kt` runnable via
+    `gradle run`. Same intent / SSE round-trip the Swift smoke
+    does. *Done.*
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.
 - **Phase 6** -- hardening, ecosystem, theming, hot reload, starter
