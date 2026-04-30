@@ -75,6 +75,118 @@
           (System/exit 2))))
 
 ;; ---------------------------------------------------------------------------
+;; Upgrade helpers
+;;
+;; Cache lives at ~/.cache/wun/upgrade-state.edn so it survives
+;; reinstalls and isn't checked into the wun working tree. Format:
+;;
+;;   {:checked-at  1748000000   ;; epoch seconds of the last fetch
+;;    :ahead       3            ;; commits between local HEAD and origin/master
+;;    :breaking    1            ;; how many of those have BREAKING in the subject
+;;    :local-sha   "abc123..."
+;;    :upstream    "def456..."
+;;    :declined    1748000010}  ;; user said no this session; suppress until next fetch
+
+(def ^:private cache-file
+  (str (fs/path (or (System/getenv "XDG_CACHE_HOME")
+                    (str (System/getenv "HOME") "/.cache"))
+                "wun" "upgrade-state.edn")))
+
+(defn- read-cache []
+  (when (fs/exists? cache-file)
+    (try (read-string (slurp cache-file))
+         (catch Throwable _ nil))))
+
+(defn- write-cache! [m]
+  (fs/create-dirs (fs/parent cache-file))
+  (spit cache-file (pr-str m)))
+
+(defn- now-secs [] (quot (System/currentTimeMillis) 1000))
+
+(defn- git [root & args]
+  (apply p/sh
+         (-> ["git" "-C" root]
+             (into args))
+         {:out :string :err :string :continue true}))
+
+(defn- shell-out [{:keys [exit out]}]
+  (when (zero? exit) (str/trim (or out ""))))
+
+(defn- on-master? [root]
+  (= "master" (shell-out (git root "rev-parse" "--abbrev-ref" "HEAD"))))
+
+(defn- working-tree-dirty? [root]
+  (some? (shell-out (git root "status" "--porcelain"))))
+
+(defn- ahead-of-upstream? [root]
+  (let [n (some-> (shell-out (git root "rev-list" "--count" "origin/master..HEAD"))
+                  (Integer/parseInt))]
+    (and n (pos? n))))
+
+(defn- dev-mode?
+  "True when the user is actively developing the wun framework itself
+   (vs. consuming it). We skip auto-upgrade prompts in dev mode --
+   they'd be noisy and would trip on uncommitted work."
+  [root]
+  (or (working-tree-dirty? root)
+      (not (on-master? root))
+      (ahead-of-upstream? root)))
+
+(def ^:private fetch-stale-secs (* 24 60 60))   ; 24h
+(def ^:private decline-stale-secs 3600)         ; 1h "remind me later"
+
+(defn- refresh-upgrade-state!
+  "Fetch upstream and write the cache. Returns the new state."
+  [root]
+  (git root "fetch" "--quiet" "origin" "master")
+  (let [behind (some-> (shell-out (git root "rev-list" "--count" "HEAD..origin/master"))
+                       (Integer/parseInt))
+        breaking (when (and behind (pos? behind))
+                   (count
+                    (->> (shell-out (git root "log" "--format=%s"
+                                         "HEAD..origin/master"))
+                         (#(or % ""))
+                         str/split-lines
+                         (filter #(re-find #"\bBREAKING\b" %)))))
+        local    (shell-out (git root "rev-parse" "HEAD"))
+        upstream (shell-out (git root "rev-parse" "origin/master"))
+        state    {:checked-at (now-secs)
+                  :ahead      (or behind 0)
+                  :breaking   (or breaking 0)
+                  :local-sha  local
+                  :upstream   upstream}]
+    (write-cache! state)
+    state))
+
+(defn- get-upgrade-state
+  "Return cached state, refreshing iff older than fetch-stale-secs.
+   Returns nil if we couldn't fetch (offline, no remote, etc.)."
+  [root]
+  (let [cached (read-cache)
+        fresh? (and cached
+                    (< (- (now-secs) (:checked-at cached 0))
+                       fetch-stale-secs))]
+    (if fresh?
+      cached
+      (try (refresh-upgrade-state! root)
+           (catch Throwable _ cached)))))
+
+(defn- tty? []
+  (some? (System/console)))
+
+(defn- prompt!
+  "Read a y/n answer from the user, defaulting to `default`."
+  [question default]
+  (print (str question " "
+              (if default "[Y/n]" "[y/N]") " "))
+  (flush)
+  (let [line (some-> (read-line) str/trim str/lower-case)]
+    (cond
+      (str/blank? line) default
+      (#{"y" "yes"} line) true
+      :else false)))
+
+;; ---------------------------------------------------------------------------
 ;; doctor
 
 (defn- which [bin]
@@ -159,11 +271,24 @@
                   :inherit true}
                  "clojure" "-M" "-m" "wun.server.core")))
 
+(defn- ensure-node-modules! [^String web-dir]
+  ;; shadow-cljs needs node_modules/react etc.; the installer only
+  ;; clones, so the first dev run on a fresh checkout has to npm
+  ;; install first. Idempotent -- npm short-circuits if everything
+  ;; is already there.
+  (when-not (fs/exists? (fs/path web-dir "node_modules"))
+    (step "installing npm deps in " web-dir " (one-time)")
+    (let [{:keys [exit]} (p/sh {:dir web-dir :inherit true} "npm" "install")]
+      (when-not (zero? exit)
+        (err "npm install failed in " web-dir)
+        (System/exit (int exit))))))
+
 (defn- run-shadow [root]
-  (step "starting shadow-cljs watch (browser http://localhost:8081)")
-  (-> (p/process {:dir (str (fs/path root "wun-web"))
-                  :inherit true}
-                 "npx" "shadow-cljs" "watch" "app")))
+  (let [web-dir (str (fs/path root "wun-web"))]
+    (ensure-node-modules! web-dir)
+    (step "starting shadow-cljs watch (browser http://localhost:8081)")
+    (-> (p/process {:dir web-dir :inherit true}
+                   "npx" "shadow-cljs" "watch" "app"))))
 
 (defn- exit-code-of [proc]
   ;; @proc waits and yields a process record; :exit holds the code.
@@ -401,6 +526,142 @@
     (cmd-new-app args)))
 
 ;; ---------------------------------------------------------------------------
+;; upgrade
+
+(defn- show-upgrade-summary [root state]
+  (let [{:keys [ahead breaking local-sha upstream]} state]
+    (println (str (c :bold "wun") " is " (c :bold ahead)
+                  " commit" (when (not= 1 ahead) "s") " behind master"
+                  (when (and breaking (pos? breaking))
+                    (str ", " (c :red (str breaking " BREAKING"))))))
+    (println (str "  " (subs (or local-sha "?") 0 (min 7 (count (or local-sha "?"))))
+                  " -> "
+                  (subs (or upstream "?") 0 (min 7 (count (or upstream "?"))))))
+    (when (and ahead (pos? ahead))
+      (let [log (shell-out (git root "log" "--format=  %h %s"
+                                "HEAD..origin/master"))]
+        (when log
+          (println)
+          (println (c :dim "incoming commits:"))
+          (doseq [line (str/split-lines log)]
+            (if (re-find #"\bBREAKING\b" line)
+              (println (c :red line))
+              (println line))))))))
+
+(defn- list-new-migrations [root state]
+  ;; Show migrations/* files added between local-sha and upstream so
+  ;; the user knows whether they need to run anything after the pull.
+  (when-let [{:keys [local-sha upstream]} state]
+    (let [diff (shell-out (git root "diff" "--name-only"
+                               (str local-sha ".." upstream) "--" "migrations/"))]
+      (when (and diff (not (str/blank? diff)))
+        (println)
+        (println (c :dim "new migrations to consider after upgrade:"))
+        (doseq [path (str/split-lines diff)]
+          (println (str "  " path)))
+        (println)
+        (println "  apply with: " (c :bold "wun migrations apply <id> --dir <your-app>"))))))
+
+(defn- cmd-upgrade [_args]
+  (let [root  (repo-root)]
+    (when (working-tree-dirty? root)
+      (err "wun checkout has local changes -- commit or stash before upgrading")
+      (println "  (the framework checkout is at: " root ")")
+      (System/exit 2))
+    (when-not (on-master? root)
+      (warn "current branch is not master; staying on it for the fetch"))
+    (step "fetching origin/master")
+    (let [state (refresh-upgrade-state! root)]
+      (cond
+        (zero? (:ahead state 0))
+        (do (ok "already up to date") (System/exit 0))
+
+        :else
+        (do
+          (show-upgrade-summary root state)
+          (list-new-migrations root state)
+          (println)
+          (when (and (tty?)
+                     (not (prompt! "Apply this upgrade?" false)))
+            (write-cache! (assoc state :declined (now-secs)))
+            (println "  declined; run " (c :bold "wun upgrade") " again to retry.")
+            (System/exit 0))
+          (step "fast-forwarding to origin/master")
+          (let [{:keys [exit out err]} (git root "merge" "--ff-only" "origin/master")]
+            (when-not (zero? exit)
+              (binding [*out* *err*] (println (str/trim (or err out))))
+              (System/exit (int exit))))
+          (when (fs/exists? (fs/path root "wun-web/package.json"))
+            (ensure-node-modules! (str (fs/path root "wun-web"))))
+          (write-cache! (assoc state :ahead 0 :breaking 0
+                               :local-sha (:upstream state)
+                               :checked-at (now-secs)))
+          (println)
+          (ok "upgraded to " (subs (or (:upstream state) "?") 0 7))
+          (when (pos? (:breaking state 0))
+            (warn "this upgrade includes BREAKING changes -- review the commits above")
+            (println "  if migrations/ files were added, apply them now."))
+          (println "  run " (c :bold "wun doctor") " to re-verify your environment."))))))
+
+;; ---------------------------------------------------------------------------
+;; migrations
+
+(defn- migrations-dir [root]
+  (fs/path root "migrations"))
+
+(defn- list-migrations [root]
+  (let [dir (migrations-dir root)]
+    (when (fs/exists? dir)
+      (->> (fs/list-dir dir)
+           (filter #(or (str/ends-with? (str %) ".bb")
+                        (str/ends-with? (str %) ".clj")))
+           (map #(str (fs/file-name %)))
+           sort))))
+
+(defn- migration-id [filename]
+  ;; Convention: NNNN-slug.bb -- the leading digits are the id.
+  (let [[id _] (re-find #"^(\d+)" filename)]
+    id))
+
+(defn- cmd-migrations-list [_args]
+  (let [root (repo-root)
+        files (list-migrations root)]
+    (if (empty? files)
+      (println "no migrations under " (str (migrations-dir root)))
+      (do (println "available migrations:")
+          (doseq [f files] (println "  " f))))))
+
+(defn- cmd-migrations-apply [args]
+  (let [{:keys [id dir]}
+        (loop [m {} args (vec args)]
+          (cond
+            (empty? args) m
+            (= "--dir" (first args)) (recur (assoc m :dir (second args)) (drop 2 args))
+            :else (recur (assoc m :id (first args)) (rest args))))]
+    (when-not id
+      (err "usage: wun migrations apply <id> [--dir <path>]")
+      (System/exit 2))
+    (let [root (repo-root)
+          target (or dir (str (fs/canonicalize ".")))
+          file (->> (list-migrations root)
+                    (filter #(or (= id %) (= id (migration-id %))))
+                    first)]
+      (when-not file
+        (err "no migration matching " id) (System/exit 2))
+      (step "applying " file " against " target)
+      (let [{:keys [exit]}
+            (p/sh ["bb" (str (fs/path (migrations-dir root) file)) target]
+                  {:inherit true})]
+        (System/exit (int exit))))))
+
+(defn- cmd-migrations [args]
+  (case (first args)
+    "list"   (cmd-migrations-list (rest args))
+    "apply"  (cmd-migrations-apply (rest args))
+    (do (err "usage: wun migrations <list|apply>")
+        (System/exit 2))))
+
+;; ---------------------------------------------------------------------------
 ;; release
 
 (defn- run-or-die [& args]
@@ -465,29 +726,76 @@
     "  wun new app  <name>              standalone app scaffold (server + web + ios + android)"
     "  wun new pack <name>              user-component pack scaffold"
     "  wun release  <version>           tag + push (e.g. v0.1.0)"
-    "  wun help                         this message"]))
+    "  wun upgrade                      pull latest wun + surface BREAKING changes"
+    "  wun migrations <list|apply ...>  list / apply codemod scripts in migrations/"
+    "  wun help                         this message"
+    ""
+    (str "  Set " (c :dim "WUN_NO_AUTO_UPGRADE=1") " to suppress the auto-check.")]))
 
 (defn- cmd-help [_args] (println usage))
 
 ;; ---------------------------------------------------------------------------
 ;; Dispatch
 
+(def ^:private skip-auto-check
+  ;; Commands where prompting would be wrong (the user is already
+  ;; addressing the upgrade or just asking for help).
+  #{"upgrade" "help" "doctor" "release" "migrations" nil})
+
+(defn- maybe-auto-check!
+  "Before dispatching, check whether the user should upgrade and (in
+   a TTY, when not in dev mode) prompt to do so. Skipped when:
+   - the command is itself meta (upgrade/help/doctor/release/migrations)
+   - WUN_NO_AUTO_UPGRADE is set
+   - the user declined within the last hour
+   - the user is in dev mode (working tree dirty / non-master / ahead)
+   - we couldn't fetch (offline) -- silent skip"
+  [cmd]
+  (when-not (or (skip-auto-check cmd)
+                (System/getenv "WUN_NO_AUTO_UPGRADE"))
+    (let [root (find-repo-root)]
+      (when (and root (not (dev-mode? root)))
+        (let [state (get-upgrade-state root)
+              recently-declined?
+              (and (:declined state)
+                   (< (- (now-secs) (:declined state))
+                      decline-stale-secs))]
+          (when (and state
+                     (pos? (:ahead state 0))
+                     (not recently-declined?))
+            (println (str (c :yellow "!") " wun is "
+                          (c :bold (:ahead state)) " commit"
+                          (when (not= 1 (:ahead state)) "s")
+                          " behind master"
+                          (when (pos? (:breaking state 0))
+                            (str " (" (c :red (str (:breaking state) " BREAKING")) ")"))))
+            (when (tty?)
+              (if (prompt! "  upgrade now?" false)
+                (cmd-upgrade nil)
+                (do (write-cache! (assoc state :declined (now-secs)))
+                    (println (str "  ok, will remind again later. "
+                                  "Set WUN_NO_AUTO_UPGRADE=1 to silence."))
+                    (println))))))))))
+
 (defn -main [& [cmd & args]]
+  (maybe-auto-check! cmd)
   (case cmd
-    "doctor"   (cmd-doctor  args)
-    "dev"      (cmd-dev     args)
-    "run"      (cmd-run     args)
-    "new"      (cmd-new     args)
-    "release"  (cmd-release args)
-    "help"     (cmd-help    args)
-    nil        (cmd-help    args)
-    "add"      (case (first args)
-                 "component" (cmd-add-component (rest args))
-                 "screen"    (cmd-add-screen    (rest args))
-                 "intent"    (cmd-add-intent    (rest args))
-                 (do (err "unknown 'add' subcommand: " (first args))
-                     (println "  expected one of: component | screen | intent")
-                     (System/exit 2)))
+    "doctor"      (cmd-doctor     args)
+    "dev"         (cmd-dev        args)
+    "run"         (cmd-run        args)
+    "new"         (cmd-new        args)
+    "release"     (cmd-release    args)
+    "upgrade"     (cmd-upgrade    args)
+    "migrations"  (cmd-migrations args)
+    "help"        (cmd-help       args)
+    nil           (cmd-help       args)
+    "add"         (case (first args)
+                    "component" (cmd-add-component (rest args))
+                    "screen"    (cmd-add-screen    (rest args))
+                    "intent"    (cmd-add-intent    (rest args))
+                    (do (err "unknown 'add' subcommand: " (first args))
+                        (println "  expected one of: component | screen | intent")
+                        (System/exit 2)))
     (do (err "unknown command: " cmd)
         (println usage)
         (System/exit 2))))
