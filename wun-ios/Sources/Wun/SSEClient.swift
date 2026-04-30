@@ -20,6 +20,7 @@ public final class SSEClient: @unchecked Sendable {
     public typealias OnDisconnect  = @Sendable (Error?) -> Void
 
     private let url: URL
+    private let headers: [String: String]
     private let session: URLSession
     private var task: Task<Void, Never>?
 
@@ -28,11 +29,13 @@ public final class SSEClient: @unchecked Sendable {
     private let onDisconnect:  OnDisconnect
 
     public init(url: URL,
+                headers: [String: String] = [:],
                 session: URLSession = .shared,
                 onConnected: @escaping OnConnected = {},
                 onDisconnect: @escaping OnDisconnect = { _ in },
                 onEnvelope: @escaping OnEnvelope) {
         self.url = url
+        self.headers = headers
         self.session = session
         self.onConnected = onConnected
         self.onDisconnect = onDisconnect
@@ -62,6 +65,9 @@ public final class SSEClient: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache",          forHTTPHeaderField: "Cache-Control")
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
 
         do {
             let (bytes, response) = try await session.bytes(for: request)

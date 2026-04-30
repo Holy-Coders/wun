@@ -18,13 +18,15 @@ let sseURL: URL = {
        let provided = URL(string: CommandLine.arguments[1]) {
         return provided
     }
-    return URL(string:
-        "http://localhost:8080/wun?fmt=json"
-        + "&caps=wun/Stack@1,wun/Text@1,wun/Image@1,wun/Button@1,"
-        + "wun/Card@1,wun/Avatar@1,wun/Input@1,wun/List@1,"
-        + "wun/Spacer@1,wun/ScrollView@1,wun/WebFrame@1"
-    )!
+    // Native clients on phase 2.G use headers instead of query
+    // params; the URL itself is just /wun.
+    return URL(string: "http://localhost:8080/wun")!
 }()
+
+let capabilityHeaderValue: String =
+    "wun/Stack@1,wun/Text@1,wun/Image@1,wun/Button@1,"
+    + "wun/Card@1,wun/Avatar@1,wun/Input@1,wun/List@1,"
+    + "wun/Spacer@1,wun/ScrollView@1,wun/WebFrame@1"
 
 // Lock-protected mirror so the SSE callback (background queue) can
 // mutate state alongside the main thread's intent firings.
@@ -53,7 +55,11 @@ let dispatcher = IntentDispatcher(
 
 let client = SSEClient(
     url: sseURL,
-    onConnected: { print("[smoke] connected to \(sseURL)") },
+    headers: [
+        "X-Wun-Capabilities": capabilityHeaderValue,
+        "X-Wun-Format":       "json",
+    ],
+    onConnected: { print("[smoke] connected to \(sseURL) (caps via header)") },
     onDisconnect: { error in
         if let e = error { print("[smoke] disconnected: \(e)") }
         else             { print("[smoke] stream ended") }

@@ -262,6 +262,11 @@ identically.
     server-side and the cljc stays pure. The HTML is currently a
     stub diagnostic; rendering the actual subtree via the web
     cljs renderers is a later-phase improvement. *Done.*
+  - **2.G** native clients now use `X-Wun-Capabilities` and
+    `X-Wun-Format` request headers as the brief specifies; server
+    reads either header or query-string. SSEClient takes
+    `headers: [String:String]`; web stays on the query-string form
+    because EventSource can't set custom headers. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

@@ -111,18 +111,21 @@
 
 (defn- on-stream-ready
   "Called by Pedestal when an SSE connection is ready. Reads the
-   client's advertised capabilities from the `caps` query param and
-   the wire format from the `fmt` query param (EventSource can't set
-   custom headers; native clients in phase 2 use the
-   `X-Wun-Capabilities` header instead). Registers the channel along
-   with parsed metadata, then pushes the initial frame through the
-   regular broadcast path -- diff(nil, current-substituted) yields a
-   full :replace at root, with any unsupported subtrees already
-   replaced by [:wun/WebFrame {...}]."
+   client's advertised capabilities and wire format from either
+   `X-Wun-Capabilities` / `X-Wun-Format` request headers (preferred,
+   used by native clients) or `?caps=` / `?fmt=` query params (web
+   fallback because EventSource can't set custom headers).
+
+   Registers the channel along with parsed metadata, then pushes the
+   initial frame through the regular broadcast path."
   [event-ch ctx]
-  (let [params   (get-in ctx [:request :query-params])
-        caps     (capabilities/parse (:caps params))
-        fmt      (parse-fmt (:fmt params))]
+  (let [request  (:request ctx)
+        headers  (:headers request)
+        params   (:query-params request)
+        caps-str (or (get headers "x-wun-capabilities") (:caps params))
+        fmt-str  (or (get headers "x-wun-format")       (:fmt params))
+        caps     (capabilities/parse caps-str)
+        fmt      (parse-fmt fmt-str)]
     (state/add-connection! event-ch caps fmt)
     (log/debugf "wun: connected fmt=%s caps=%s" (name fmt) (pr-str caps))
     (broadcast-to-channel! event-ch nil)
