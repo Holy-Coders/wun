@@ -38,10 +38,32 @@ wun run ios                      # in another terminal, open the macOS demo
 wun add component myapp/Card     # scaffold a multi-platform component
 wun add screen    myapp/profile  # scaffold a screen .cljc
 wun add intent    myapp/login    # scaffold an intent .cljc
-wun new my-app                   # copy templates/component-pack/ as a sibling dir
+
+wun new app  myapp               # standalone app (server + web + ios + android)
+wun new pack myapp-components    # reusable component pack
+wun release  v0.1.0              # tag + push for downstream consumption
 ```
 
 Re-running any generator is idempotent. `wun help` lists every subcommand.
+
+## Starting a new project
+
+```bash
+# 1. Have wun cloned alongside (the template assumes a sibling clone)
+cd ~/code
+git clone https://github.com/Holy-Coders/wun.git
+wun new app myapp                  # creates ~/code/myapp/
+cd myapp
+npm install
+wun dev                            # http://localhost:8081
+```
+
+The template depends on Wun via local-root paths to `../wun/wun-*`, so
+the dev loop works immediately with no publishing. Once Wun is stable
+enough to pin to a tag, swap the `:local/root` / `path:` /
+`includeBuild` entries for git-deps / SwiftPM URL / JitPack — see the
+generated app's README for the exact swap. `wun release` from the wun
+repo cuts a tag suitable for any of those forms.
 
 ## Repo layout
 

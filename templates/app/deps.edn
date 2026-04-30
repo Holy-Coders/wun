@@ -1,0 +1,29 @@
+;; Wun-app deps. By default we pull each Wun sub-project as a
+;; sibling local-root, which assumes the user has the wun repo
+;; checked out alongside this one (i.e. ../wun/). Swap any of these
+;; for the :git/url forms below the comment block once you'd rather
+;; pin to a tag.
+;;
+;;   wun/wun-shared {:git/url "https://github.com/Holy-Coders/wun.git"
+;;                   :git/tag "v0.1.0"
+;;                   :git/sha "<full-sha-here>"
+;;                   :deps/root "wun-shared"}
+;;
+;; deps.edn resolves :local/root and the inner :local/root chains
+;; relative to the file declaring them, so once you fetch wun via
+;; :git, wun-server's own ../wun-shared reference resolves inside
+;; the cached clone rather than your project tree.
+
+{:paths ["src" "resources"]
+ :deps  {;; -- the Wun framework --
+         wun/wun-shared {:local/root "../wun/wun-shared"}
+         wun/wun-server {:local/root "../wun/wun-server"}
+         wun/wun-web    {:local/root "../wun/wun-web"}
+
+         ;; cljs runtime; shadow-cljs reads from this file via :deps true
+         org.clojure/clojurescript  {:mvn/version "1.11.132"}
+         reagent/reagent            {:mvn/version "1.2.0"}
+         thheller/shadow-cljs       {:mvn/version "2.28.20"}}
+
+ :aliases
+ {:server {:main-opts ["-m" "myapp.server.main"]}}}

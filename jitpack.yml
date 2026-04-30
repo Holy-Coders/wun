@@ -1,0 +1,21 @@
+# JitPack build config -- builds wun-android only.
+#
+# Consumers use:
+#   repositories { maven("https://jitpack.io") }
+#   dependencies {
+#       implementation("com.github.Holy-Coders.wun:wun-android:v0.1.0")
+#   }
+#
+# JitPack picks the artifact name from the included Gradle module's
+# rootProject.name, which is "wun" -- so the coordinate becomes
+# `com.github.Holy-Coders.wun:wun:<tag>`. (See `wun release` output
+# for the exact line to copy.)
+
+jdk:
+  - openjdk21
+
+before_install:
+  - cd wun-android && ./gradlew --version
+
+install:
+  - cd wun-android && ./gradlew publishToMavenLocal -x test --no-daemon
