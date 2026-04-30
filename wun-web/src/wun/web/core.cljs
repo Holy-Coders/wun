@@ -99,6 +99,8 @@
 ;; Entry points
 
 (defn ^:export init []
+  (js/console.info "wun: registered renderers"
+                   (clj->js (renderers/registered)))
   (mount!)
   (bus/start-pending-gc!)
   (start-sse!))
