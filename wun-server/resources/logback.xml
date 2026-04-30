@@ -1,14 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+  <!-- Default appender: full output including stack traces. Used by
+       everything that logs (intent errors, real exceptions, etc.). -->
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
     </encoder>
   </appender>
 
+  <!-- Quiet appender: identical pattern but `%nopex` skips the
+       implicit throwable rendering. SSE clients disconnect routinely
+       and Pedestal surfaces the resulting `EofException` at WARN
+       with a full Jetty stack trace; the human-readable WARN line is
+       useful, the stack trace is just noise. We attach this appender
+       to `io.pedestal.http.impl.servlet-interceptor` so disconnect
+       warnings stay legible without filling the terminal. Real
+       errors from anywhere else keep their full traces via STDOUT. -->
+  <appender name="STDOUT_NO_TRACE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n%nopex</pattern>
+    </encoder>
+  </appender>
+
   <logger name="org.eclipse.jetty" level="WARN"/>
   <logger name="io.pedestal"       level="INFO"/>
   <logger name="wun"               level="DEBUG"/>
+
+  <!-- Route servlet-interceptor through the no-trace appender. -->
+  <logger name="io.pedestal.http.impl.servlet-interceptor"
+          level="WARN" additivity="false">
+    <appender-ref ref="STDOUT_NO_TRACE"/>
+  </logger>
 
   <root level="INFO">
     <appender-ref ref="STDOUT"/>
