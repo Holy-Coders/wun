@@ -51,8 +51,14 @@
     (let [tag (first node)]
       (if (keyword? tag)
         (let [[props children] (props+children node)
-              kids             (render-children children)]
-          (if-let [f (lookup tag)]
+              kids             (render-children children)
+              f                (lookup tag)]
+          (when-not f
+            (js/console.warn "wun: no renderer for tag"
+                             (pr-str tag)
+                             "registered:"
+                             (clj->js (mapv pr-str (registered)))))
+          (if f
             (f props kids)
             (into [:div.wun-unknown {} (str "[unknown component " tag "]")] kids)))
         ;; Plain seq -> reagent fragment.
