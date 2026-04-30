@@ -12,10 +12,14 @@ swift test
 
 ## Status
 
-Phase 2.A + 2.B landed. The package now does an end-to-end wire
-loop against a phase-2-aware server: connect to `/wun?fmt=json`,
-parse SSE frames, apply structural patches into a `TreeMirror`. No
-SwiftUI renderer yet; that's 2.C.
+Phase 2.A through 2.H landed. The package does an end-to-end wire
+loop against a phase-2-aware server, ships SwiftUI renderers for
+the brief's full foundational vocabulary, and falls back to a
+WKWebView for any component the client doesn't ship natively.
+
+To see it on screen, see [wun-ios-example](../wun-ios-example) --
+that package adds a SwiftUI macOS demo target you can run from
+Xcode or `swift run`.
 
 | type / actor       | role                                                           |
 |--------------------|----------------------------------------------------------------|

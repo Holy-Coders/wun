@@ -277,6 +277,13 @@ identically.
     that don't see a `WebFrame` substituted at the smallest
     containing subtree -- demonstrating the brief's "no privileged
     path" thesis on iOS. *Done.*
+  - **2.I** SwiftUI macOS demo. `wun-ios-example/Sources/WunDemoMac/`
+    is an `@main App` target you can run from Xcode (open
+    `Package.swift`, pick the `wun-demo-mac` scheme, ⌘R) or from
+    CLI (`swift run wun-demo-mac`). Hosts `WunView` against a live
+    `TreeStore` fed by `SSEClient`; clicking buttons fires intents
+    through the installed `IntentDispatcher`, server confirms via
+    SSE, the on-screen counter updates. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.

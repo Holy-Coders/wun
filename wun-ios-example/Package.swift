@@ -16,7 +16,8 @@ let package = Package(
     ],
     products: [
         .library(name: "WunExample", targets: ["WunExample"]),
-        .executable(name: "example-smoke", targets: ["ExampleSmoke"])
+        .executable(name: "example-smoke", targets: ["ExampleSmoke"]),
+        .executable(name: "wun-demo-mac", targets: ["WunDemoMac"])
     ],
     dependencies: [
         .package(name: "Wun", path: "../wun-ios"),
@@ -28,6 +29,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "ExampleSmoke",
+            dependencies: [
+                .product(name: "Wun", package: "Wun"),
+                "WunExample",
+            ]
+        ),
+        .executableTarget(
+            name: "WunDemoMac",
             dependencies: [
                 .product(name: "Wun", package: "Wun"),
                 "WunExample",
