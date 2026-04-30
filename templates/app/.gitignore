@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.vscode/
+.shadow-cljs/
+
+# Build artefacts
+public/js/
+.cpcache/
+node_modules/
+ios/.build/
+android/build/
+android/.gradle/

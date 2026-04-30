@@ -313,22 +313,98 @@
     (println "  - require " (c :bold (str ns "." name "-intent")) " from wun-server core")))
 
 ;; ---------------------------------------------------------------------------
-;; new <app>
+;; new <kind> <name>
 
-(defn- cmd-new [[name & _]]
-  (when (or (not name) (str/blank? name))
-    (err "usage: wun new <app-name>")
-    (System/exit 2))
+(defn- copy-template! [template-dir name]
   (let [root (repo-root)
-        src  (fs/path root "templates/component-pack")
+        src  (fs/path root "templates" template-dir)
         dst  (fs/path (fs/canonicalize ".") name)]
+    (when-not (fs/exists? src)
+      (err "template missing: " (str src)) (System/exit 2))
     (when (fs/exists? dst)
-      (err "destination already exists: " (str dst))
-      (System/exit 2))
-    (step "scaffolding " (c :bold name) " from templates/component-pack")
+      (err "destination already exists: " (str dst)) (System/exit 2))
+    (step "scaffolding " (c :bold name) " from templates/" template-dir)
     (fs/copy-tree (str src) (str dst))
     (ok "created " (str dst))
-    (println "  next: cd" name "&& open the README to fill in the renderers")))
+    dst))
+
+(defn- cmd-new-app [[name & _]]
+  (when (or (not name) (str/blank? name))
+    (err "usage: wun new app <app-name>") (System/exit 2))
+  (let [dst (copy-template! "app" name)]
+    (println)
+    (println "  next steps:")
+    (println "    cd" name)
+    (println "    npm install                  # shadow-cljs needs node deps")
+    (println "    wun dev                      # server + cljs watch together")
+    (println "    open http://localhost:8081")
+    (println)
+    (println "  the template assumes wun is a sibling clone -- see the")
+    (println "  README in" (str dst) "to switch to remote refs.")))
+
+(defn- cmd-new-pack [[name & _]]
+  (when (or (not name) (str/blank? name))
+    (err "usage: wun new pack <pack-name>") (System/exit 2))
+  (let [dst (copy-template! "component-pack" name)]
+    (println)
+    (println "  next steps: cd" name "&& open README.md to fill in the renderers")
+    dst))
+
+(defn- cmd-new [args]
+  (case (first args)
+    "app"   (cmd-new-app  (rest args))
+    "pack"  (cmd-new-pack (rest args))
+    ;; Bare `wun new <name>` defaults to `app` (the more common ask).
+    nil     (do (err "usage: wun new <app|pack> <name>") (System/exit 2))
+    (cmd-new-app args)))
+
+;; ---------------------------------------------------------------------------
+;; release
+
+(defn- run-or-die [& args]
+  (let [{:keys [exit out err]} (apply p/sh (vec args))]
+    (when-not (zero? exit)
+      (println (str/trim (or out "")))
+      (binding [*out* *err*] (println (str/trim (or err ""))))
+      (System/exit (int exit)))
+    (str/trim (or out ""))))
+
+(defn- cmd-release [[version & _]]
+  (when-not (and version (re-matches #"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?" version))
+    (err "usage: wun release <version>   (e.g. v0.1.0 or 0.1.0)")
+    (System/exit 2))
+  (let [tag    (if (str/starts-with? version "v") version (str "v" version))
+        root   (repo-root)
+        dirty? (-> (p/sh ["git" "-C" root "status" "--porcelain"]
+                         {:out :string :err :string})
+                   :out str/trim seq)
+        branch (run-or-die "git" "-C" root "rev-parse" "--abbrev-ref" "HEAD")]
+    (when dirty?
+      (err "working tree is dirty -- commit or stash first")
+      (System/exit 2))
+    (when-not (= "master" branch)
+      (warn "current branch is " (c :bold branch)
+            " (expected master); proceeding anyway"))
+    (let [exists? (-> (p/sh ["git" "-C" root "rev-parse" "--verify" "--quiet" tag]
+                            {:out :string :err :string :continue true})
+                      :exit zero?)]
+      (when exists?
+        (err "tag " tag " already exists locally")
+        (System/exit 2)))
+
+    (step "tagging " (c :bold tag))
+    (run-or-die "git" "-C" root "tag" "-a" tag "-m" (str "Release " tag))
+    (step "pushing " tag " to origin")
+    (run-or-die "git" "-C" root "push" "origin" branch "--tags")
+    (println)
+    (ok "released " tag)
+    (println "  consumers can now pin to:")
+    (println "    Clojure  : :git/url \"https://github.com/Holy-Coders/wun.git\"")
+    (println "               :git/tag \"" tag "\"  :deps/root \"wun-server\" (or wun-shared / wun-web)")
+    (println "    Swift    : .package(url: \"https://github.com/Holy-Coders/wun.git\",")
+    (println "                        from: \"" (str/replace tag #"^v" "") "\")")
+    (println "    Android  : implementation(\"com.github.Holy-Coders.wun:wun-android:" tag "\")")
+    (println "               // requires JitPack on the resolver list")))
 
 ;; ---------------------------------------------------------------------------
 ;; help
@@ -344,7 +420,9 @@
     "  wun add component <ns>/<Name>    multi-platform component scaffold"
     "  wun add screen    <ns>/<name>    new screen .cljc"
     "  wun add intent    <ns>/<name>    new intent .cljc"
-    "  wun new <app-name>               copy templates/component-pack/ next door"
+    "  wun new app  <name>              standalone app scaffold (server + web + ios + android)"
+    "  wun new pack <name>              user-component pack scaffold"
+    "  wun release  <version>           tag + push (e.g. v0.1.0)"
     "  wun help                         this message"]))
 
 (defn- cmd-help [_args] (println usage))
@@ -354,19 +432,20 @@
 
 (defn -main [& [cmd & args]]
   (case cmd
-    "doctor"  (cmd-doctor args)
-    "dev"     (cmd-dev    args)
-    "run"     (cmd-run    args)
-    "new"     (cmd-new    args)
-    "help"    (cmd-help   args)
-    nil       (cmd-help   args)
-    "add"     (case (first args)
-                "component" (cmd-add-component (rest args))
-                "screen"    (cmd-add-screen    (rest args))
-                "intent"    (cmd-add-intent    (rest args))
-                (do (err "unknown 'add' subcommand: " (first args))
-                    (println "  expected one of: component | screen | intent")
-                    (System/exit 2)))
+    "doctor"   (cmd-doctor  args)
+    "dev"      (cmd-dev     args)
+    "run"      (cmd-run     args)
+    "new"      (cmd-new     args)
+    "release"  (cmd-release args)
+    "help"     (cmd-help    args)
+    nil        (cmd-help    args)
+    "add"      (case (first args)
+                 "component" (cmd-add-component (rest args))
+                 "screen"    (cmd-add-screen    (rest args))
+                 "intent"    (cmd-add-intent    (rest args))
+                 (do (err "unknown 'add' subcommand: " (first args))
+                     (println "  expected one of: component | screen | intent")
+                     (System/exit 2)))
     (do (err "unknown command: " cmd)
         (println usage)
         (System/exit 2))))
