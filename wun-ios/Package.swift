@@ -11,6 +11,11 @@ let package = Package(
         .library(name: "Wun", targets: ["Wun"])
     ],
     targets: [
-        .target(name: "Wun", path: "Sources/Wun")
+        .target(name: "Wun", path: "Sources/Wun"),
+        .testTarget(
+            name: "WunTests",
+            dependencies: ["Wun"],
+            path: "Tests/WunTests"
+        )
     ]
 )

@@ -6,15 +6,16 @@
 (defonce app-state (atom {:counter 0}))
 
 ;; SSE connections are keyed by core.async channel and carry per-conn
-;; metadata: the *prior tree* the connection has seen (for diffing)
-;; and the *caps* the client advertised (for capability substitution).
-;; New connections register with prior=nil; diff(nil, current) emits a
-;; full :replace-at-root, so the initial frame falls out of the same
-;; code path as ongoing broadcasts.
+;; metadata: the *prior tree* the connection has seen (for diffing),
+;; the *caps* the client advertised (for capability substitution),
+;; and the wire *fmt* (:transit or :json) the client requested.
+;; New connections register with prior=nil; diff(nil, current) emits
+;; a full :replace-at-root, so the initial frame falls out of the
+;; same code path as ongoing broadcasts.
 (defonce connections (atom {}))
 
-(defn add-connection! [event-ch caps]
-  (swap! connections assoc event-ch {:prior nil :caps caps}))
+(defn add-connection! [event-ch caps fmt]
+  (swap! connections assoc event-ch {:prior nil :caps caps :fmt fmt}))
 
 (defn remove-connection! [event-ch]
   (swap! connections dissoc event-ch))
@@ -24,6 +25,9 @@
 
 (defn caps [event-ch]
   (get-in @connections [event-ch :caps]))
+
+(defn fmt [event-ch]
+  (get-in @connections [event-ch :fmt]))
 
 (defn update-prior-tree! [event-ch tree]
   (swap! connections (fn [m]

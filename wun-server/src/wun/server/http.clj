@@ -50,15 +50,16 @@
 (defn- broadcast-to-channel!
   "Diff `ch`'s prior tree against the per-connection-substituted current
    tree and enqueue a patch envelope iff there are patches or an
-   intent to resolve. Capability substitution happens per-channel
-   because two clients may advertise different caps; their patches
-   diverge accordingly. Updates the stored prior on successful
+   intent to resolve. Substitution + encoding happen per-channel:
+   different clients may advertise different caps and request
+   different wire formats. Updates the stored prior on successful
    enqueue. On offer! failure, evicts the connection iff its channel
    has actually closed (so transient buffer-full conditions don't drop
    slow-but-alive clients)."
   [ch resolves-intent]
   (let [raw     (current-tree)
         caps    (state/caps ch)
+        fmt     (state/fmt ch)
         tree    (capabilities/substitute raw caps)
         prior   (state/prior-tree ch)
         patches (diff/diff prior tree)]
@@ -66,7 +67,7 @@
       (let [env  (wire/patch-envelope patches
                                       {:resolves-intent resolves-intent
                                        :state           @state/app-state})
-            data (wire/write-transit-json env)]
+            data (wire/encode-envelope fmt env)]
         (cond
           (a/offer! ch {:name "patch" :data data})
           (state/update-prior-tree! ch tree)
@@ -87,39 +88,74 @@
 ;; ---------------------------------------------------------------------------
 ;; SSE
 
+(defn- parse-fmt
+  "Pick a wire format for an SSE connection. EventSource can't set
+   custom headers, so the format choice rides on a `?fmt=` query
+   parameter. Web clients omit it (default :transit); native clients
+   pass `?fmt=json`."
+  [s]
+  (case s
+    "json"    :json
+    "transit" :transit
+    :transit))
+
 (defn- on-stream-ready
   "Called by Pedestal when an SSE connection is ready. Reads the
-   client's advertised capabilities from the `caps` query parameter
-   (EventSource can't set custom headers; native clients in phase 2
-   will use `X-Wun-Capabilities`). Registers the channel along with
-   parsed caps, then pushes the initial frame through the regular
-   broadcast path -- diff(nil, current-substituted) yields a full
-   :replace at root, with any unsupported subtrees already replaced
-   by [:wun/WebFrame {...}]."
+   client's advertised capabilities from the `caps` query param and
+   the wire format from the `fmt` query param (EventSource can't set
+   custom headers; native clients in phase 2 use the
+   `X-Wun-Capabilities` header instead). Registers the channel along
+   with parsed metadata, then pushes the initial frame through the
+   regular broadcast path -- diff(nil, current-substituted) yields a
+   full :replace at root, with any unsupported subtrees already
+   replaced by [:wun/WebFrame {...}]."
   [event-ch ctx]
-  (let [caps-str (get-in ctx [:request :query-params :caps])
-        caps     (capabilities/parse caps-str)]
-    (state/add-connection! event-ch caps)
-    (log/debugf "wun: connected with caps %s" (pr-str caps))
+  (let [params   (get-in ctx [:request :query-params])
+        caps     (capabilities/parse (:caps params))
+        fmt      (parse-fmt (:fmt params))]
+    (state/add-connection! event-ch caps fmt)
+    (log/debugf "wun: connected fmt=%s caps=%s" (name fmt) (pr-str caps))
     (broadcast-to-channel! event-ch nil)
     ctx))
 
 ;; ---------------------------------------------------------------------------
 ;; Intent endpoint
 
-(defn- transit-response [status body]
+(defn- coerce-intent-keyword
+  "JSON read-str leaves string values as strings; the intent name has
+   to be a keyword to look up the morph. Transit preserves keywords,
+   so this is a no-op for transit bodies."
+  [v] (cond-> v (string? v) keyword))
+
+(defn- request->envelope+fmt
+  "Pull the intent envelope out of the parsed request. Pedestal's
+   body-params interceptor splits transit-json into :transit-params
+   and application/json into :json-params; the wire format we send
+   back matches the request body's format."
+  [request]
+  (cond
+    (:transit-params request)
+    [(:transit-params request) :transit]
+
+    (:json-params request)
+    [(update (:json-params request) :intent coerce-intent-keyword) :json]))
+
+(defn- response [fmt status body]
   {:status  status
-   :headers {"Content-Type" "application/transit+json"}
-   :body    (wire/write-transit-json body)})
+   :headers {"Content-Type" (case fmt
+                              :json "application/json; charset=utf-8"
+                              "application/transit+json")}
+   :body    (wire/encode-envelope fmt body)})
 
 (defn- intent-handler [request]
-  (let [{:keys [intent params id]} (:transit-params request)]
+  (let [[envelope fmt] (request->envelope+fmt request)
+        {:keys [intent params id]} envelope]
     (if-let [err (intents/validate-params intent params)]
-      (transit-response 400 {:status :error :resolves-intent id :error err})
+      (response fmt 400 {:status :error :resolves-intent id :error err})
       (do
         (swap! state/app-state intents/apply-intent intent params)
         (broadcast! id)
-        (transit-response 200 {:status :ok :resolves-intent id})))))
+        (response fmt 200 {:status :ok :resolves-intent id})))))
 
 ;; ---------------------------------------------------------------------------
 ;; Static files

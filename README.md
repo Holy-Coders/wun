@@ -219,6 +219,10 @@ identically.
     Native frame.
 - **Phase 2** -- iOS native. SwiftUI renderers, WebFrame fallback,
   capability negotiation end-to-end.
+  - **2.A** server content-negotiates JSON (`Accept: application/json`
+    or `?fmt=json`) alongside transit-json; Swift package scaffolds
+    the wire-shape types (`JSON`, `WunNode`, `Patch`, `Envelope`)
+    with Codable + Equatable, no networking yet. *Done.*
 - **Phase 3** -- Android. Compose renderers, parity with iOS.
 - **Phase 4** -- shared morphs on native via SCI in JavaScriptCore / V8.
 - **Phase 5** -- opt-in CRDTs for collaborative components.
