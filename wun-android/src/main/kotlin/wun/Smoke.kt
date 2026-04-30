@@ -68,7 +68,13 @@ fun main(args: Array<String>) {
                    println("[smoke] dispatched counter/by 'oops' (should 400)") }
     delay(2500)  { dispatcher.dispatch("counter/reset"); println("[smoke] dispatched counter/reset") }
 
-    // Keep the process alive; SSEClient + dispatcher run on OkHttp's
-    // dispatcher thread pool.
+    // Auto-terminate so `gradle run` actually returns. SSEClient +
+    // dispatcher run on OkHttp's thread pool; we just close shop
+    // a second after the last scheduled intent.
+    delay(3500) {
+        println("[smoke] done; exiting (Ctrl-C earlier to stop sooner)")
+        client.stop()
+        kotlin.system.exitProcess(0)
+    }
     Thread.currentThread().join()
 }
