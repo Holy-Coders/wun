@@ -172,8 +172,9 @@
     (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s"
                 conn-id screen-key (name fmt) (pr-str caps))
     (broadcast-to-channel! event-ch nil
-                           {:conn-id      conn-id
-                            :screen-stack [screen-key]})
+                           {:conn-id       conn-id
+                            :screen-stack  [screen-key]
+                            :presentations [(screens/presentation screen-key)]})
     ctx))
 
 ;; ---------------------------------------------------------------------------
@@ -240,8 +241,10 @@
 
     (= intent :wun/navigate)
     (if-let [target (resolve-screen-from-params params)]
-      (let [stack (state/push-screen! ch target)]
-        (broadcast-to-channel! ch id {:screen-stack stack})
+      (let [stack         (state/push-screen! ch target)
+            presentations (mapv screens/presentation stack)]
+        (broadcast-to-channel! ch id {:screen-stack  stack
+                                      :presentations presentations})
         {:status :ok})
       {:status :error
        :error  {:reason  :no-such-screen
@@ -250,8 +253,10 @@
 
     (= intent :wun/replace)
     (if-let [target (resolve-screen-from-params params)]
-      (let [stack (state/replace-screen! ch target)]
-        (broadcast-to-channel! ch id {:screen-stack stack})
+      (let [stack         (state/replace-screen! ch target)
+            presentations (mapv screens/presentation stack)]
+        (broadcast-to-channel! ch id {:screen-stack  stack
+                                      :presentations presentations})
         {:status :ok})
       {:status :error
        :error  {:reason  :no-such-screen
@@ -259,8 +264,10 @@
                 :params  params}})
 
     (= intent :wun/pop)
-    (let [stack (state/pop-screen! ch)]
-      (broadcast-to-channel! ch id {:screen-stack stack})
+    (let [stack         (state/pop-screen! ch)
+          presentations (mapv screens/presentation stack)]
+      (broadcast-to-channel! ch id {:screen-stack  stack
+                                    :presentations presentations})
       {:status :ok})))
 
 (defn- coerce-conn-id
@@ -276,23 +283,41 @@
 (defn- intent-handler [request]
   (let [[envelope fmt]            (request->envelope+fmt request)
         {:keys [intent params id]} envelope
-        conn-id                    (coerce-conn-id (:conn-id envelope))]
+        conn-id                    (coerce-conn-id (:conn-id envelope))
+        cached                     (some-> id state/cached-intent)]
     (cond
+      ;; Idempotency: a duplicate intent id (client retried after a
+      ;; flaky network) gets the same response without re-running the
+      ;; morph or re-broadcasting. Bounded LRU cache so memory stays
+      ;; flat under load.
+      cached
+      (do
+        (log/debugf "wun: dedup'd intent id=%s intent=%s" id intent)
+        (response fmt 200 cached))
+
       (contains? framework-intents intent)
       (let [ch     (some-> conn-id state/channel-by-conn-id)
-            result (handle-framework-intent! ch intent params id)]
+            result (handle-framework-intent! ch intent params id)
+            body   (case (:status result)
+                     :ok    {:status :ok :resolves-intent id}
+                     :error {:status :error :resolves-intent id
+                             :error  (:error result)})]
+        (when id (state/cache-intent! id body))
         (case (:status result)
-          :ok    (response fmt 200 {:status :ok :resolves-intent id})
-          :error (response fmt 400 {:status :error :resolves-intent id
-                                    :error  (:error result)})))
+          :ok    (response fmt 200 body)
+          :error (response fmt 400 body)))
 
       :else
       (if-let [err (intents/validate-params intent params)]
-        (response fmt 400 {:status :error :resolves-intent id :error err})
+        (let [body {:status :error :resolves-intent id :error err}]
+          (when id (state/cache-intent! id body))
+          (response fmt 400 body))
         (do
           (swap! state/app-state intents/apply-intent intent params)
           (broadcast! id)
-          (response fmt 200 {:status :ok :resolves-intent id}))))))
+          (let [body {:status :ok :resolves-intent id}]
+            (when id (state/cache-intent! id body))
+            (response fmt 200 body)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; WebFrame fallback endpoint.

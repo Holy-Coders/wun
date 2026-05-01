@@ -20,11 +20,12 @@ public struct Envelope: Decodable, Equatable, Sendable {
     public let resolvesIntent: String?
     public let connID: String?
     public let screenStack: [String]?
+    public let presentations: [String]?
     public let meta: JSON?
     public let error: JSON?
 
     enum CodingKeys: String, CodingKey {
-        case patches, status, state, error, meta
+        case patches, status, state, error, meta, presentations
         case resolvesIntent = "resolves-intent"
         case connID         = "conn-id"
         case screenStack    = "screen-stack"
@@ -36,6 +37,7 @@ public struct Envelope: Decodable, Equatable, Sendable {
                 resolvesIntent: String? = nil,
                 connID: String? = nil,
                 screenStack: [String]? = nil,
+                presentations: [String]? = nil,
                 meta: JSON? = nil,
                 error: JSON? = nil) {
         self.patches = patches
@@ -44,6 +46,7 @@ public struct Envelope: Decodable, Equatable, Sendable {
         self.resolvesIntent = resolvesIntent
         self.connID = connID
         self.screenStack = screenStack
+        self.presentations = presentations
         self.meta = meta
         self.error = error
     }
@@ -58,6 +61,7 @@ public struct Envelope: Decodable, Equatable, Sendable {
         self.resolvesIntent = try c.decodeIfPresent(String.self,     forKey: .resolvesIntent)
         self.connID         = try c.decodeIfPresent(String.self,     forKey: .connID)
         self.screenStack    = try c.decodeIfPresent([String].self,   forKey: .screenStack)
+        self.presentations  = try c.decodeIfPresent([String].self,   forKey: .presentations)
         self.meta           = try c.decodeIfPresent(JSON.self,       forKey: .meta)
         self.error          = try c.decodeIfPresent(JSON.self,       forKey: .error)
     }

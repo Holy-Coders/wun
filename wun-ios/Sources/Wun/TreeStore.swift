@@ -26,6 +26,16 @@ public final class TreeStore: ObservableObject {
     /// carries a `screen-stack` extra (initial frame, navigate, pop).
     @Published public private(set) var screenStack: [String] = []
 
+    /// Presentation hint per stack entry: "push" or "modal". Native
+    /// hosts read the top entry to decide modal-vs-push for the
+    /// visible screen. Mirrors Hotwire Native's path-configuration.json.
+    @Published public private(set) var presentations: [String] = []
+
+    /// Convenience: presentation of the top of stack.
+    public var topPresentation: String {
+        presentations.last ?? "push"
+    }
+
     /// Page meta from the server's `:meta` extra. Title is the most
     /// commonly read field (NavigationView title); `meta` keeps the
     /// rest available for whoever wants it.
@@ -53,6 +63,9 @@ public final class TreeStore: ObservableObject {
         }
         if let stack = envelope.screenStack {
             screenStack = stack
+        }
+        if let pres = envelope.presentations {
+            presentations = pres
         }
         if let m = envelope.meta {
             meta = m

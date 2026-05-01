@@ -62,6 +62,11 @@
 
 (defonce ^:private es (atom nil))
 (defonce ^:private was-connected? (atom false))
+;; Sticky: stays true after the first successful connect for the
+;; lifetime of this JS context. Used to distinguish a brand-new
+;; connection from a reconnect-after-drop, since EventSource resets
+;; was-connected? to false on every error.
+(defonce ^:private ever-connected? (atom false))
 
 (defn- current-caps
   "Build the capability map from registered web renderers; the version
@@ -86,15 +91,21 @@
         (when-not @was-connected?
           (js/console.info "wun: SSE connected"))
         (reset! was-connected? true)
+        (reset! ever-connected? true)
         (set-status! "connected")
         (set-offline! false)
         (bus/apply-envelope! (str->t (.-data ev)))))
     (.addEventListener src "open"
       (fn [_]
-        (when-not @was-connected?
-          (js/console.info "wun: SSE open"))
-        (set-status! "connected")
-        (set-offline! false)))
+        (let [reconnect? @ever-connected?]
+          (when-not reconnect?
+            (js/console.info "wun: SSE open"))
+          (set-status! "connected")
+          (set-offline! false)
+          ;; On reconnect, replay any still-pending intents the server
+          ;; may have missed during the outage. Server-side dedup
+          ;; (keyed by intent id) makes this safe.
+          (when reconnect? (bus/replay-pending!)))))
     (.addEventListener src "error"
       (fn [_]
         (when @was-connected?

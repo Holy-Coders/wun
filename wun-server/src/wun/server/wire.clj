@@ -82,6 +82,7 @@
    (merge {:patches (vec patches) :status :ok}
           (some-> extras (select-keys [:resolves-intent :state
                                        :conn-id :screen-stack
+                                       :presentations
                                        :meta])))))
 
 (defn encode-envelope

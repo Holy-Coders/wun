@@ -92,6 +92,13 @@
    [(or (some-> js/window .-location .-pathname screens/lookup-by-path)
         :counter/main)]))
 
+;; Presentation hint (`:push` / `:modal`) for each entry in the
+;; screen-stack. Web treats both as a regular page swap today, but
+;; native clients use it to decide sheet-vs-push. We mirror it here
+;; so the wire stays uniform across platforms.
+(defonce presentations
+  (r/atom [:push]))
+
 (defn current-screen-key [] (peek @screen-stack))
 
 (defn- now-ms [] (.getTime (js/Date.)))
@@ -196,6 +203,23 @@
   []
   (dispatch! :wun/pop {}))
 
+(defn replay-pending!
+  "Re-POST every still-pending intent. Called when SSE reconnects so
+   anything fired during the offline window actually reaches the
+   server. The server's idempotency cache (keyed by `:id`) absorbs
+   duplicates -- intents already processed return their cached
+   response without re-running the morph."
+  []
+  (let [now    (now-ms)
+        cutoff (- now pending-ttl-ms)
+        live   (vec (remove #(< (:created-at % 0) cutoff) @pending))]
+    (when-not (= live @pending)
+      (reset! pending live))
+    (when (seq live)
+      (js/console.info "wun: replaying" (count live) "pending intent(s)")
+      (doseq [{:keys [intent params id]} live]
+        (post-intent! intent params id)))))
+
 (defn- bootstrap-frame?
   "True when an envelope's patches contain a :replace at root, which
    the server emits on (re)connect or screen-level restructure. We
@@ -237,20 +261,28 @@
    recompute the display."
   [{cid    :conn-id
     stack  :screen-stack
+    pres   :presentations
     meta   :meta
     :keys [patches state resolves-intent status error]}]
   (when (= status :error)
     (js/console.error "wun: server error" (clj->js error)))
-  (when (and (seq patches) (bootstrap-frame? patches))
-    (when (seq @pending)
-      (js/console.info "wun: bootstrap frame; dropping" (count @pending) "pending intent(s)"))
-    (reset! pending []))
+  ;; (Note: we no longer clear `pending` on bootstrap. Server-side
+  ;; intent dedup makes retrying safe -- the next POSTs will either
+  ;; be no-ops (because the server already processed them) or run
+  ;; fresh (because the disconnect happened before the server saw
+  ;; them). The client-side TTL still drops stale entries.)
+  (when (and (seq patches) (bootstrap-frame? patches) (seq @pending))
+    (js/console.info "wun: bootstrap frame; keeping" (count @pending)
+                     "pending intent(s) for retry"))
   (when cid
     (reset! conn-id cid))
   (when (seq stack)
     (let [normalized (mapv #(if (string? %) (keyword %) %) stack)]
       (reset! screen-stack normalized)
       (sync-url! (peek normalized))))
+  (when (seq pres)
+    (reset! presentations
+            (mapv #(if (string? %) (keyword %) %) pres)))
   (when (seq patches)
     (swap! confirmed-tree diff/apply-patches patches))
   (when (some? state)

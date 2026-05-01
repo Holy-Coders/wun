@@ -16,6 +16,7 @@ class TreeMirror(initial: JsonElement = JsonNull) {
     @Volatile private var _lastResolvedIntent: String? = null
     @Volatile private var _connId: String? = null
     @Volatile private var _screenStack: List<String> = emptyList()
+    @Volatile private var _presentations: List<String> = emptyList()
     @Volatile private var _meta: JsonElement? = null
     @Volatile private var _title: String? = null
 
@@ -24,6 +25,8 @@ class TreeMirror(initial: JsonElement = JsonNull) {
     val lastResolvedIntent: String? get() = _lastResolvedIntent
     val connId: String? get() = _connId
     val screenStack: List<String> get() = _screenStack
+    val presentations: List<String> get() = _presentations
+    val topPresentation: String get() = _presentations.lastOrNull() ?: "push"
     val meta: JsonElement? get() = _meta
     val title: String? get() = _title
 
@@ -35,6 +38,7 @@ class TreeMirror(initial: JsonElement = JsonNull) {
             envelope.state?.let { _state = it }
             envelope.connId?.let { _connId = it }
             envelope.screenStack?.let { _screenStack = it }
+            envelope.presentations?.let { _presentations = it }
             envelope.meta?.let { m ->
                 _meta = m
                 if (m is kotlinx.serialization.json.JsonObject) {

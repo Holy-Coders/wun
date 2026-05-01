@@ -15,13 +15,23 @@ struct ContentView: View {
     @State private var showDevtools: Bool = false
 
     var body: some View {
+        // Path-configuration awareness: when the server marks the
+        // visible screen as `:modal` we render the previous (host)
+        // screen plus a sheet on top, like Hotwire Native does for
+        // path-configured modal routes.
+        let isModal = store.topPresentation == "modal" && store.screenStack.count >= 2
+        let modalTree = isModal ? store.tree : nil
+
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 statusBar
                 Divider()
 
                 ScrollView {
-                    WunView(store.tree)
+                    // Render the host screen behind the modal so
+                    // dismissing the sheet snaps back to it without
+                    // a full server round-trip.
+                    WunView(modalTree == nil ? store.tree : .null)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(20)
                 }
@@ -47,6 +57,16 @@ struct ContentView: View {
         // `assign(:page_title, …)` and Hotwire's <title> head merge.
         .navigationTitle(store.title ?? "Wun")
         .frame(minHeight: 540)
+        // Modal sheet driven by the top of the screen-stack's :present hint.
+        .sheet(isPresented: .constant(modalTree != nil),
+               onDismiss: { vm.dispatcher.popScreen() }) {
+            ScrollView {
+                WunView(modalTree ?? .null)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+            }
+            .frame(minWidth: 420, minHeight: 320)
+        }
     }
 
     private var statusBar: some View {

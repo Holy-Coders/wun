@@ -5,7 +5,8 @@
   (:require [wun.screens :refer [defscreen]]))
 
 (defscreen :app/about
-  {:path "/about"
+  {:path     "/about"
+   :present  :modal
    :meta
    (fn [_state]
      {:title       "About · Wun"

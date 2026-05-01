@@ -10,7 +10,13 @@
    returning cross-platform metadata: at minimum `:title`, optionally
    `:description`, `:theme-color`, and `:og` (web-only OpenGraph).
    The framework diffs meta per-connection so unchanged meta doesn't
-   ride the wire on every patch.")
+   ride the wire on every patch.
+
+   `:present` (added 7.B, mirrors Hotwire Native's
+   path-configuration.json) is an optional keyword: `:push` (default)
+   or `:modal`. Native clients render a screen flagged `:modal` as
+   a sheet/dialog overlaid on the previous screen instead of a full
+   replacement; web treats it as a regular navigation today.")
 
 (defonce registry (atom {}))
 
@@ -44,3 +50,10 @@
   [k state]
   (when-let [{meta-fn :meta} (lookup k)]
     (when meta-fn (meta-fn state))))
+
+(defn presentation
+  "Returns the presentation hint for screen `k` (default `:push`).
+   Used by the framework to decide modal-vs-push when shipping
+   screen-stack metadata to native clients."
+  [k]
+  (or (:present (lookup k)) :push))

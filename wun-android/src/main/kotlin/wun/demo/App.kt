@@ -9,6 +9,8 @@
 
 package wun.demo
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.alpha
 import androidx.compose.material.Divider
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
@@ -88,6 +91,7 @@ fun main() = application {
     var tree   by remember { mutableStateOf<WunNode>(initialSnap?.let { WunNode.fromJson(it.tree) } ?: WunNode.Null) }
     var state  by remember { mutableStateOf<JsonElement>(initialSnap?.state ?: JsonNull) }
     var screenStack by remember { mutableStateOf(initialSnap?.screenStack ?: emptyList()) }
+    var presentations by remember { mutableStateOf(emptyList<String>()) }
     var title  by remember { mutableStateOf(initialSnap?.title ?: "Wun") }
 
     val dispatcher = remember {
@@ -113,9 +117,10 @@ fun main() = application {
             },
             onEnvelope = { env ->
                 mirror.apply(env)
-                tree        = WunNode.fromJson(mirror.tree)
-                state       = mirror.state
-                screenStack = mirror.screenStack
+                tree          = WunNode.fromJson(mirror.tree)
+                state         = mirror.state
+                screenStack   = mirror.screenStack
+                presentations = mirror.presentations
                 mirror.title?.let { title = it }
                 Persistence.save(
                     Snapshot(
@@ -145,13 +150,30 @@ fun main() = application {
            title = title,
            state = windowState) {
         CompositionLocalProvider(LocalWunRegistry provides registry) {
-            Surface(status = status, tree = tree, state = state, stack = screenStack)
+            Surface(status = status, tree = tree, state = state,
+                    stack = screenStack,
+                    topPresentation = presentations.lastOrNull() ?: "push",
+                    onDismissModal = { dispatcher.popScreen() })
         }
     }
 }
 
 @Composable
-private fun Surface(status: String, tree: WunNode, state: JsonElement, stack: List<String>) {
+private fun Surface(status: String,
+                    tree: WunNode,
+                    state: JsonElement,
+                    stack: List<String>,
+                    topPresentation: String,
+                    onDismissModal: () -> Unit) {
+    // Mirror the iOS demo's offline behaviour: the last-known UI stays
+    // on screen during a reconnect, just visually attenuated.
+    val targetAlpha = if (status == "connected") 1f else 0.55f
+    val alpha by animateFloatAsState(targetValue = targetAlpha,
+                                     animationSpec = tween(200),
+                                     label = "wun-offline-alpha")
+
+    val isModal = topPresentation == "modal" && stack.size >= 2
+
     Column(modifier = Modifier.fillMaxSize()) {
         StatusBar(status)
         Divider()
@@ -159,16 +181,31 @@ private fun Surface(status: String, tree: WunNode, state: JsonElement, stack: Li
         Box(modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
+            .alpha(alpha)
             .verticalScroll(rememberScrollState())
             .padding(20.dp)
         ) {
-            WunView(tree)
+            // When the top of the stack is :modal we render a Dialog
+            // overlaid on a placeholder for the host screen. A future
+            // iteration could keep the previous rendered tree behind
+            // the dialog (we'd need to cache it).
+            if (!isModal) WunView(tree)
         }
 
         Divider()
         StackBar(stack)
         Divider()
         StateBar(state)
+    }
+
+    if (isModal) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = onDismissModal) {
+            androidx.compose.foundation.layout.Box(modifier = Modifier
+                .background(MaterialTheme.colors.surface)
+                .padding(20.dp)) {
+                WunView(tree)
+            }
+        }
     }
 }
 

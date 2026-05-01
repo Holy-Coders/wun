@@ -164,3 +164,32 @@
 
 (defn webframe-tree [token]
   (get @webframe-trees token))
+
+;; ---------------------------------------------------------------------------
+;; Intent dedup cache. Bounded LRU keyed by intent id -> response map.
+;; Client retries (after a flaky network or a clean reconnect) re-POST
+;; intents the server may have already processed; without dedup, an
+;; idempotent-from-the-user's-PoV "incremented the counter" intent
+;; fires twice. The cache lets us return the same response for the
+;; same id without re-running the morph or re-broadcasting.
+
+(def ^:private intent-cache-cap 1024)
+
+(defonce intent-cache
+  (atom {:queue clojure.lang.PersistentQueue/EMPTY
+         :map   {}}))
+
+(defn cache-intent! [id response]
+  (swap! intent-cache
+         (fn [{:keys [queue map] :as st}]
+           (if (contains? map id)
+             st                                      ;; already present; no-op
+             (let [q' (conj queue id)
+                   m' (assoc map id response)]
+               (if (> (count q') intent-cache-cap)
+                 (let [evict (peek q')]
+                   {:queue (pop q') :map (dissoc m' evict)})
+                 {:queue q' :map m'}))))))
+
+(defn cached-intent [id]
+  (get-in @intent-cache [:map id]))
