@@ -25,30 +25,54 @@
 ;; ANSI
 
 (def ^:private ansi
-  {:reset  "[0m"
-   :dim    "[2m"
-   :bold   "[1m"
-   :red    "[31m"
-   :green  "[32m"
-   :yellow "[33m"
-   :blue   "[34m"
-   :cyan   "[36m"})
+  {:reset     "[0m"
+   :dim       "[2m"
+   :bold      "[1m"
+   :italic    "[3m"
+   :red       "[31m"
+   :green     "[32m"
+   :yellow    "[33m"
+   :blue      "[34m"
+   :magenta   "[35m"
+   :cyan      "[36m"
+   :grey      "[90m"
+   :brred     "[91m"
+   :brgreen   "[92m"
+   :bryellow  "[93m"
+   :brblue    "[94m"
+   :brmagenta "[95m"
+   :brcyan    "[96m"})
 
 (defn- c [color & xs]
-  (str (ansi color) (apply str xs) (ansi :reset)))
+  (str (or (ansi color) "") (apply str xs) (ansi :reset)))
+
+;; Glyphs picked for clarity at a glance:
+;;   ▸ start  ✓ ok  ! warn  ✗ err  · info  ─ section rule  ◌ inert/empty
 
 (defn- step [& xs]
-  (println (c :cyan "›") (apply str xs)))
+  (println (str (c :brcyan "▸") "  " (apply str xs))))
 
 (defn- ok [& xs]
-  (println (c :green "✓") (apply str xs)))
+  (println (str (c :brgreen "✓") "  " (apply str xs))))
 
 (defn- warn [& xs]
-  (println (c :yellow "!") (apply str xs)))
+  (println (str (c :bryellow "!") "  " (apply str xs))))
 
 (defn- err [& xs]
   (binding [*out* *err*]
-    (println (c :red "✗") (apply str xs))))
+    (println (str (c :brred "✗") "  " (apply str xs)))))
+
+(defn- info [& xs]
+  (println (str (c :grey "·") "  " (apply str xs))))
+
+(defn- rule
+  "Print a labelled section divider:  ── label ──────────────…
+   Width clamped to 64 chars."
+  ([label] (rule label 64))
+  ([label width]
+   (let [head   (str "── " label " ")
+         filler (max 4 (- width (count head)))]
+     (println (c :grey (str head (apply str (repeat filler "─"))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Repo discovery
@@ -233,6 +257,117 @@
       (if (fs/exists? (fs/path root d))
         (ok "found " d)
         (warn "missing " d)))))
+
+;; ---------------------------------------------------------------------------
+;; status -- per-component coverage matrix across server / web / iOS / Android
+;;
+;; Reads the source tree directly rather than introspecting registries
+;; at runtime. That way the matrix works even when the server isn't
+;; up, and reflects truth-at-rest (what's actually shipped) rather
+;; than runtime registration order.
+
+(defn- find-files [root subpath ext]
+  (let [base (fs/path root subpath)]
+    (when (fs/exists? base)
+      (filter #(str/ends-with? (str %) ext) (fs/glob base "**")))))
+
+(defn- read-all
+  "Return the concatenated text of every file matching `ext` under `subpath`."
+  [root subpath ext]
+  (->> (find-files root subpath ext)
+       (map #(slurp (str %)))
+       (str/join "\n")))
+
+(defn- declared-components [root]
+  ;; All `(defcomponent :ns/Name ...)` declarations in shared cljc.
+  (let [text (str (read-all root "wun-shared/src" ".cljc"))
+        re   #"\(defcomponent\s+:([A-Za-z][\w.-]*/[A-Za-z][\w.-]*)"]
+    (->> (re-seq re text)
+         (map second)
+         distinct
+         sort)))
+
+(defn- component-coverage [root component-keyword]
+  ;; Component-keyword is "ns/Name". Return a map of platform ->
+  ;; "implemented" / "fallback (web)" / "missing".
+  (let [needle    (str "\"" component-keyword "\"")
+        kw-needle (str ":" component-keyword)
+        ;; Web: registered via wun.web.foundation or user namespace
+        web-text (read-all root "wun-web/src"     ".cljs")
+        ios-text (str (read-all root "wun-ios/Sources"         ".swift")
+                      (read-all root "wun-ios-example/Sources" ".swift"))
+        and-text (str (read-all root "wun-android/src"         ".kt")
+                      (read-all root "wun-android-example/src" ".kt"))
+        srv-text (read-all root "wun-server/src/wun/server" ".clj")]
+    {:web     (cond
+                (re-find (re-pattern (str "register!\\s+" kw-needle)) web-text) :impl
+                (str/includes? web-text needle) :impl
+                :else :fallback)
+     :ios     (if (str/includes? ios-text needle) :impl :fallback)
+     :android (if (str/includes? and-text needle) :impl :fallback)
+     :server  (cond
+                (re-find (re-pattern (str "defmethod\\s+render-component\\s+" kw-needle))
+                         srv-text)
+                :impl
+                ;; Anything declared in shared/components is server-known
+                ;; even without a custom HTML mapping (it falls through
+                ;; to the default <div class=wun-unknown>).
+                :else :default)}))
+
+(defn- coverage-glyph [v]
+  (case v
+    :impl     (c :brgreen "✓")
+    :fallback (c :bryellow "◌")
+    :default  (c :grey "·")
+    (c :brred "✗")))
+
+(defn- visible-len [s]
+  ;; ANSI escape sequences are zero-width on a terminal but real chars
+  ;; in the string -- strip them when computing column widths.
+  (count (str/replace (or s "") #"\x1b\[[0-9;]*m" "")))
+
+(defn- pad [s n]
+  (let [s    (or s "")
+        vlen (visible-len s)]
+    (if (>= vlen n) s (str s (apply str (repeat (- n vlen) " "))))))
+
+(defn- cmd-status [_args]
+  (let [root  (repo-root)
+        comps (declared-components root)]
+    (when (empty? comps)
+      (err "no defcomponent declarations found under wun-shared/src/")
+      (System/exit 0))
+    (rule "components")
+    (println)
+    (println (str (pad "  component" 26)
+                  (pad "web" 6)
+                  (pad "ios" 6)
+                  (pad "android" 10)
+                  "server-html"))
+    (println (str (pad "  ─────────" 26)
+                  (pad "───" 6)
+                  (pad "───" 6)
+                  (pad "───────" 10)
+                  "───────────"))
+    (doseq [k comps]
+      (let [{:keys [web ios android server]} (component-coverage root k)]
+        (println (str "  "
+                      (pad (str ":" k) 24)
+                      (pad (coverage-glyph web)     6)
+                      (pad (coverage-glyph ios)     6)
+                      (pad (coverage-glyph android) 10)
+                      (coverage-glyph server)))))
+    (println)
+    (info (str (c :brgreen "✓") " native renderer present  "
+               (c :bryellow "◌") " WebFrame fallback  "
+               (c :grey "·") " server default HTML"))
+    (println)
+    (let [stats (frequencies (map (fn [k] (-> (component-coverage root k) :ios)) comps))]
+      (info (str "iOS coverage:     " (or (:impl stats) 0) "/" (count comps)
+                 " (" (or (:fallback stats) 0) " WebFrame fallback)")))
+    (let [stats (frequencies (map (fn [k] (-> (component-coverage root k) :android)) comps))]
+      (info (str "Android coverage: " (or (:impl stats) 0) "/" (count comps)
+                 " (" (or (:fallback stats) 0) " WebFrame fallback)")))))
 
 ;; ---------------------------------------------------------------------------
 ;; run / dev
@@ -795,6 +930,7 @@
    ["Wun developer CLI"
     ""
     "  wun doctor                       check dev environment"
+    "  wun status                       per-component coverage across web/ios/android"
     "  wun dev                          server + shadow-cljs watch (Ctrl-C to stop both)"
     "  wun run <server|web|ios|android> run a single target"
     "  wun add component <ns>/<Name>    multi-platform component scaffold"
@@ -817,7 +953,7 @@
 (def ^:private skip-auto-check
   ;; Commands where prompting would be wrong (the user is already
   ;; addressing the upgrade or just asking for help).
-  #{"upgrade" "help" "doctor" "release" "migrations" nil})
+  #{"upgrade" "help" "doctor" "status" "release" "migrations" nil})
 
 (defn- maybe-auto-check!
   "Before dispatching, check whether the user should upgrade and (in
@@ -858,6 +994,7 @@
   (maybe-auto-check! cmd)
   (case cmd
     "doctor"      (cmd-doctor     args)
+    "status"      (cmd-status     args)
     "dev"         (cmd-dev        args)
     "run"         (cmd-run        args)
     "new"         (cmd-new        args)
