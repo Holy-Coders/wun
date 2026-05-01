@@ -1,0 +1,75 @@
+// Astro + Starlight config for the Wun docs.
+//
+// Style direction: ghostty.org / forge / Starlight defaults --
+// muted neutrals, one accent (Wun's #0a66c2), generous typography,
+// dark-mode-first. The accent is set via custom.css; everything else
+// is the Starlight default.
+//
+// Deployed to GitHub Pages under https://holy-coders.github.io/wun/
+// so site + base reflect that. If you switch to a custom domain,
+// drop the `base` and unset GH_PAGES.
+
+import { defineConfig } from "astro/config";
+import starlight from "@astrojs/starlight";
+
+const onGitHubPages = process.env.GH_PAGES === "1";
+
+export default defineConfig({
+  site:    "https://holy-coders.github.io",
+  base:    onGitHubPages ? "/wun" : undefined,
+  trailingSlash: "ignore",
+
+  integrations: [
+    starlight({
+      title: "Wun",
+      logo: { src: "./src/assets/wun-mark.svg", replacesTitle: false },
+      customCss: ["./src/styles/custom.css"],
+      social: {
+        github: "https://github.com/Holy-Coders/wun",
+      },
+      editLink: {
+        baseUrl: "https://github.com/Holy-Coders/wun/edit/master/docs-site/",
+      },
+      sidebar: [
+        { label: "Getting started",
+          items: [
+            { label: "Why Wun",            slug: "getting-started/why-wun" },
+            { label: "Install",            slug: "getting-started/install" },
+            { label: "Your first app",     slug: "getting-started/your-first-app" },
+          ],
+        },
+        { label: "Concepts",
+          items: [
+            { label: "Server-driven UI",   slug: "concepts/sdui" },
+            { label: "Components",         slug: "concepts/components" },
+            { label: "Screens",            slug: "concepts/screens" },
+            { label: "Intents",            slug: "concepts/intents" },
+            { label: "Capability negotiation", slug: "concepts/capabilities" },
+            { label: "Wire format",        slug: "concepts/wire-format" },
+          ],
+        },
+        { label: "Architecture",
+          items: [
+            { label: "Head & hot-cache",   slug: "architecture/head-and-cache" },
+            { label: "Path configuration", slug: "architecture/path-config" },
+            { label: "Reconnect & retry",  slug: "architecture/reconnect" },
+          ],
+        },
+        { label: "Reference",
+          items: [
+            { label: "CLI",                slug: "reference/cli" },
+            { label: "Component vocabulary", slug: "reference/components" },
+            { label: "Migrations",         slug: "reference/migrations" },
+          ],
+        },
+        { label: "AI integration",
+          items: [
+            { label: "Working with agents", slug: "ai/agents" },
+            { label: "MCP server",          slug: "ai/mcp" },
+            { label: "Skills",              slug: "ai/skills" },
+          ],
+        },
+      ],
+    }),
+  ],
+});

@@ -1,0 +1,68 @@
+---
+title: MCP server
+description: Wire Wun's developer tools into any MCP-aware LLM client.
+---
+
+`mcp/server.mjs` is a [Model Context Protocol](https://modelcontextprotocol.io)
+server speaking stdio. It lets Claude Desktop, Cursor, Cline,
+Continue, and any other MCP-aware agent inspect a Wun project and
+run scaffolds without shelling out.
+
+## Tools
+
+| name                | does                                                     |
+|---------------------|----------------------------------------------------------|
+| `wun_status`        | per-component coverage matrix                            |
+| `wun_doctor`        | env check (java/clojure/swift/gradle/node/bb)            |
+| `wun_add_component` | scaffold cljc + iOS + Android + registry splices         |
+| `wun_add_screen`    | scaffold a new screen .cljc                              |
+| `wun_add_intent`    | scaffold a new intent .cljc                              |
+
+All shell out to the existing `wun` CLI with `WUN_NO_AUTO_UPGRADE=1`
+so the auto-upgrade prompt doesn't block agent runs. Output is
+ANSI-stripped before returning.
+
+## Resources
+
+Read-only documentation surfaces the agent can pull on demand:
+
+- `wun://CLAUDE.md` — project orientation
+- `wun://docs/architecture/head-and-cache` — LiveView/Hotwire mapping
+- `wun://skills/<name>` — every file under `skills/`
+
+## Install
+
+```bash
+cd mcp && npm install
+```
+
+## Wire into Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "wun": {
+      "command": "node",
+      "args": ["/absolute/path/to/wun/mcp/server.mjs"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The Wun tools appear in the tools picker.
+
+## Wire into Cursor / Cline / Continue
+
+Same config shape — these clients all honour `command + args` for
+stdio MCP. Look for the MCP config in each tool's settings UI.
+
+## Verify
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}' | node mcp/server.mjs
+```
+
+You should see a JSON response advertising Wun's tools and resource
+capabilities.

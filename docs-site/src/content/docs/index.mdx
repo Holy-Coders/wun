@@ -1,0 +1,65 @@
+---
+title: Wun
+description: Clojure-first cross-platform server-driven UI framework.
+template: splash
+hero:
+  tagline: Server-driven UI for native apps and the web. One vocabulary, one wire, three platforms.
+  actions:
+    - text: Get started
+      link: /getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/Holy-Coders/wun
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why Wun
+
+The server holds the UI state. It emits intent-shaped UI trees as
+patches over a single SSE channel per client. Every client — web,
+iOS, Android — mirrors the tree, renders natively, and sends
+intents back. Components and intents are defined **once** in
+`.cljc`; renderers register per platform; unsupported components
+fall back to WebView frames seamlessly.
+
+<CardGrid>
+  <Card title="Three macros" icon="seti:clojure">
+    `defcomponent`, `defscreen`, `definent` are the only API surface.
+    Framework code uses the same APIs as user code — there is no
+    privileged path.
+  </Card>
+  <Card title="One wire format" icon="seti:json">
+    Transit-json or JSON envelopes carry patches, intents, screen
+    metadata, and connection state. The same shape lands on the web,
+    in SwiftUI, and in Compose.
+  </Card>
+  <Card title="Optimistic by default" icon="rocket">
+    `:morph` runs identically on server (authoritative) and client
+    (predictive). Intents reconcile via UUID; the UI updates before
+    the round-trip completes.
+  </Card>
+  <Card title="WebFrame fallback" icon="seti:html">
+    Any component the native client lacks collapses to a server-rendered
+    HTML frame at the smallest containing subtree. New components ship
+    without breaking older clients.
+  </Card>
+</CardGrid>
+
+## Inspired by
+
+[Phoenix LiveView](https://hexdocs.pm/phoenix_live_view) for the
+stateful-socket / optimistic-prediction model, [Hotwire
+Turbo](https://turbo.hotwired.dev) for transport patterns + head
+merging, and [SDUI](https://martinfowler.com/articles/server-driven-ui.html)
+in general for the server-as-source-of-truth posture. The Clojure
+side leans on data-as-API + macros to keep the surface tight.
+
+## Status
+
+The framework is a working spike — see the
+[changelog](https://github.com/Holy-Coders/wun/commits/master) on
+GitHub for what's landed. Browse the docs sidebar for the concepts
+and the CLI reference.
