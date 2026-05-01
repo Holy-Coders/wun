@@ -3,6 +3,8 @@ title: Component vocabulary
 description: The :wun/* components Wun ships out of the box.
 ---
 
+import { Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
 The framework registers these via `wun.foundation.components`. Each
 has a native renderer in `wun-web`, `wun-ios`, and `wun-android`,
 plus a server-side HTML mapping for WebFrame fallback.
@@ -26,6 +28,58 @@ plus a server-side HTML mapping for WebFrame fallback.
 | `:wun/ScrollView`    | Scrollable region. `:direction :vertical/:horizontal`.       |
 | `:wun/WebFrame`      | Capability fallback. `:src :missing :reason`.                |
 
+## A foundational binding
+
+Here's how `:wun/Button` is bound on each platform — the same
+keyword, three thin renderers around the platform's native tap
+target. The platform choice you make below persists across the
+site.
+
+<Tabs syncKey="platform">
+  <TabItem label="Web (cljs)">
+    ```clojure
+    (r/register! :wun/Button
+      (fn [{:keys [on-press tone]} children]
+        [:button {:class    (str "wun-btn wun-btn-" (name (or tone :default)))
+                  :on-click #(bus/dispatch! on-press)}
+         children]))
+    ```
+  </TabItem>
+  <TabItem label="iOS (Swift)">
+    ```swift
+    public enum Button {
+        public static let render: WunComponent = { props, children in
+            AnyView(
+              SwiftUI.Button(action: {
+                if let intent = props["on-press"] { Bus.dispatch(intent) }
+              }) {
+                ForEach(Array(children.enumerated()), id: \.offset) { _, kid in
+                  WunView(kid)
+                }
+              }
+              .buttonStyle(.borderedProminent)
+            )
+        }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Android (Kotlin)">
+    ```kotlin
+    object ButtonRenderer {
+        val render: WunComponent = { props, children ->
+            FilledTonalButton(
+              onClick = {
+                  (props["on-press"] as? JsonElement)?.let(Bus::dispatch)
+              }
+            ) {
+              children.forEach { WunView(it) }
+            }
+        }
+    }
+    ```
+  </TabItem>
+</Tabs>
+
 ## Adding more
 
 Define one in `wun-shared/src/wun/foundation/components.cljc`,
@@ -35,5 +89,17 @@ changes.
 
 For app-specific components, use `wun add component <ns>/<Name>`
 which scaffolds the cljc declaration plus iOS Swift + Android
-Kotlin renderers and splices both registry files. See
-[Components](../concepts/components/) for the full pattern.
+Kotlin renderers and splices both registry files.
+
+<CardGrid>
+  <LinkCard
+    title="How components work"
+    href="/concepts/components/"
+    description="The full pattern for declaring, registering, and shipping a component across platforms."
+  />
+  <LinkCard
+    title="CLI reference"
+    href="/reference/cli/"
+    description="wun add component, wun status, and the rest of the developer CLI."
+  />
+</CardGrid>

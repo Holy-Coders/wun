@@ -5,12 +5,16 @@
 // dark-mode-first. The accent is set via custom.css; everything else
 // is the Starlight default.
 //
+// Mermaid diagrams render at build time via rehype-mermaid (Playwright
+// under the hood). No client-side mermaid runtime ships.
+//
 // Deployed to GitHub Pages under https://holy-coders.github.io/wun/
 // so site + base reflect that. If you switch to a custom domain,
 // drop the `base` and unset GH_PAGES.
 
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import rehypeMermaid from "rehype-mermaid";
 
 const onGitHubPages = process.env.GH_PAGES === "1";
 
@@ -18,6 +22,33 @@ export default defineConfig({
   site:    "https://holy-coders.github.io",
   base:    onGitHubPages ? "/wun" : undefined,
   trailingSlash: "ignore",
+
+  markdown: {
+    syntaxHighlight: "shiki",
+    rehypePlugins: [
+      [rehypeMermaid, {
+        // Inline SVG keeps the page zero-JS and lets our custom.css
+        // tweak diagram size/centering. The "neutral" theme reads
+        // cleanly in both light and dark mode.
+        // Requires `npx playwright install --with-deps chromium` once
+        // (the docs CI workflow runs that step before the build).
+        strategy: "inline-svg",
+        mermaidConfig: {
+          theme: "neutral",
+          themeVariables: {
+            primaryColor:       "#cce0f5",
+            primaryTextColor:   "#0a1020",
+            primaryBorderColor: "#0a66c2",
+            lineColor:          "#0a66c2",
+            secondaryColor:     "#e7efff",
+            tertiaryColor:      "#f4f8fd",
+            fontSize:           "14px",
+            fontFamily:         "ui-sans-serif, system-ui, -apple-system, sans-serif",
+          },
+        },
+      }],
+    ],
+  },
 
   integrations: [
     starlight({

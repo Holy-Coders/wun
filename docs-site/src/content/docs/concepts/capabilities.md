@@ -28,6 +28,35 @@ GET /wun?caps=wun%2FStack%401%2C... HTTP/1.1
 Each entry is `<keyword>@<version>`. Version is the client's
 `:since` for that component.
 
+## How collapse works
+
+```mermaid
+flowchart LR
+    subgraph Tree["rendered tree"]
+        A[":wun/Stack"]
+        B[":wun/Text"]
+        C([":myapp/RichEditor<br/>unsupported"])
+        D[":wun/Button"]
+        A --> B
+        A --> C
+        A --> D
+    end
+    Tree -->|capabilities/substitute| Result
+    subgraph Result["client-bound tree"]
+        A2[":wun/Stack"]
+        B2[":wun/Text"]
+        C2([":wun/WebFrame<br/>:src /web-frames/abc<br/>:missing :myapp/RichEditor"]):::fallback
+        D2[":wun/Button"]
+        A2 --> B2
+        A2 --> C2
+        A2 --> D2
+    end
+    classDef fallback fill:#0a66c2,stroke:#1f4f86,color:#ffffff;
+```
+
+Substitution stops at the smallest containing subtree, so children
+inside an unsupported component never need to be checked individually.
+
 ## How the server uses it
 
 For each broadcast, the server runs `wun.capabilities/substitute`

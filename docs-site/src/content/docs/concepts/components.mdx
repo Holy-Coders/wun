@@ -3,6 +3,8 @@ title: Components
 description: The namespaced vocabulary, schemas, and platform bindings.
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 A component is a **namespaced keyword** with a per-platform
 renderer. `:wun/Stack`, `:wun/Text`, `:wun/Button` are the
 foundational set the framework ships; `:myapp/Card`,
@@ -37,60 +39,61 @@ metadata for capability negotiation and tooling.
 
 Each platform has its own registry. The framework ships `WunFoundation`
 for the `:wun/*` set; user code registers its own components the
-same way:
+same way. Pick your platform — the choice persists across the site
+via `syncKey="platform"`, so a Swift reader stays on Swift everywhere.
 
-### Web (cljs / reagent)
+<Tabs syncKey="platform">
+  <TabItem label="Web (cljs)">
+    ```clojure
+    (ns myapp.web.renderers
+      (:require [wun.web.renderers :as r]))
 
-```clojure
-(ns myapp.web.renderers
-  (:require [wun.web.renderers :as r]))
-
-(r/register! :myapp/Card
-  (fn [{:keys [title]} children]
-    (into [:div.myapp-card
-           (when title [:h3 title])]
-          children)))
-```
-
-### iOS (Swift)
-
-```swift
-public enum Card {
-    public static let render: WunComponent = { props, children in
-        AnyView(
-          VStack(alignment: .leading) {
-            if case .string(let t) = props["title"] ?? .null {
-              Text(t).font(.headline)
-            }
-            ForEach(Array(children.enumerated()), id: \.offset) { _, kid in
-              WunView(kid)
-            }
-          }
-        )
-    }
-}
-
-// Register:
-registry.register("myapp/Card", Card.render)
-```
-
-### Android (Kotlin / Compose)
-
-```kotlin
-object CardRenderer {
-    val render: WunComponent = { props, children ->
-        Column {
-            (props["title"] as? JsonPrimitive)?.takeIf { it.isString }?.let {
-                Text(it.content)
-            }
-            children.forEach { WunView(it) }
+    (r/register! :myapp/Card
+      (fn [{:keys [title]} children]
+        (into [:div.myapp-card
+               (when title [:h3 title])]
+              children)))
+    ```
+  </TabItem>
+  <TabItem label="iOS (Swift)">
+    ```swift
+    public enum Card {
+        public static let render: WunComponent = { props, children in
+            AnyView(
+              VStack(alignment: .leading) {
+                if case .string(let t) = props["title"] ?? .null {
+                  Text(t).font(.headline)
+                }
+                ForEach(Array(children.enumerated()), id: \.offset) { _, kid in
+                  WunView(kid)
+                }
+              }
+            )
         }
     }
-}
 
-// Register:
-registry.register("myapp/Card", CardRenderer.render)
-```
+    // Register:
+    registry.register("myapp/Card", Card.render)
+    ```
+  </TabItem>
+  <TabItem label="Android (Kotlin)">
+    ```kotlin
+    object CardRenderer {
+        val render: WunComponent = { props, children ->
+            Column {
+                (props["title"] as? JsonPrimitive)?.takeIf { it.isString }?.let {
+                    Text(it.content)
+                }
+                children.forEach { WunView(it) }
+            }
+        }
+    }
+
+    // Register:
+    registry.register("myapp/Card", CardRenderer.render)
+    ```
+  </TabItem>
+</Tabs>
 
 ## Capability negotiation
 

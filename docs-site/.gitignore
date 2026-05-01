@@ -1,3 +1,8 @@
 .astro/
 dist/
 node_modules/
+
+# Playwright caches (rehype-mermaid build dependency)
+.cache/playwright/
+test-results/
+playwright-report/
