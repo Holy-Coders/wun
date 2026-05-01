@@ -915,10 +915,10 @@
     (ok "released " tag)
     (println "  consumers can now pin to:")
     (println "    Clojure  : :git/url \"https://github.com/Holy-Coders/wun.git\"")
-    (println "               :git/tag \"" tag "\"  :deps/root \"wun-server\" (or wun-shared / wun-web)")
+    (println (str "               :git/tag \"" tag "\"  :deps/root \"wun-server\" (or wun-shared / wun-web)"))
     (println "    Swift    : .package(url: \"https://github.com/Holy-Coders/wun.git\",")
-    (println "                        from: \"" (str/replace tag #"^v" "") "\")")
-    (println "    Android  : implementation(\"com.github.Holy-Coders.wun:wun-android:" tag "\")")
+    (println (str "                        from: \"" (str/replace tag #"^v" "") "\")"))
+    (println (str "    Android  : implementation(\"com.github.Holy-Coders.wun:wun-android:" tag "\")"))
     (println "               // requires JitPack on the resolver list")))
 
 ;; ---------------------------------------------------------------------------
