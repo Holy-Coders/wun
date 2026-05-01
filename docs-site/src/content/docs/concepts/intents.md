@@ -27,6 +27,24 @@ clients reconcile via UUID.
 | `:params` | Malli schema validated on **both** sides of the wire.                |
 | `:morph`  | Pure `(state, params) → state`. Runs identically on server + client. |
 
+## How an intent flows
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant C as Client (pending queue)
+    participant S as Server (LRU dedup)
+    U->>C: dispatch intent {id=u1, params}
+    C->>C: append to pending<br/>recompute predicted state
+    C->>S: POST /intent {id=u1, intent, params}
+    Note over C: UI already reflects<br/>the optimistic state
+    S->>S: validate :params<br/>run :morph against app-state
+    S-->>C: SSE: patch + :resolves-intent u1
+    C->>C: drop pending u1 by id
+    Note over C,S: Match → no visible change<br/>Mismatch → next envelope corrects it
+```
+
 ## The two execution sites
 
 ### Server (authoritative)

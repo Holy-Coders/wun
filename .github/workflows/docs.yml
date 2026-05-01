@@ -45,6 +45,9 @@ jobs:
       - name: Install
         run: npm ci || npm install
 
+      - name: Install Playwright Chromium (for build-time mermaid SVGs)
+        run: npx playwright install --with-deps chromium
+
       - name: Build
         env:
           GH_PAGES: "1"

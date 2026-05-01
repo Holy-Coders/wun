@@ -1,0 +1,32 @@
+---
+/**
+ * Four-up platform strip: web, iOS, macOS, Android — all rendering the
+ * same counter screen. Used on the landing hero and concept pages to
+ * make the "one wire, three platforms" claim visible.
+ *
+ * Drops in next to the asset path; `bin/capture-screenshots.sh` overwrites
+ * the .png files (when present) with real captures, falling back to the
+ * stylized .svg placeholders shipped in-repo.
+ */
+
+import webImg     from "../assets/clients/web.svg";
+import iosImg     from "../assets/clients/ios.svg";
+import macosImg   from "../assets/clients/macos.svg";
+import androidImg from "../assets/clients/android.svg";
+
+const clients = [
+  { label: "Web",     img: webImg.src,     alt: "Wun counter screen rendered in the web client" },
+  { label: "iOS",     img: iosImg.src,     alt: "Wun counter screen rendered as SwiftUI on iOS" },
+  { label: "macOS",   img: macosImg.src,   alt: "Wun counter screen rendered as SwiftUI on macOS" },
+  { label: "Android", img: androidImg.src, alt: "Wun counter screen rendered as Compose on Android" },
+];
+---
+
+<figure class="client-strip" aria-label="The same Wun screen rendering on web, iOS, macOS, and Android in lock-step">
+  {clients.map(c => (
+    <div class="client-card">
+      <img src={c.img} alt={c.alt} loading="lazy" />
+      <div class="client-label"><span>{c.label}</span></div>
+    </div>
+  ))}
+</figure>

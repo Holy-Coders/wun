@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 480" width="360" height="480" role="img" aria-label="Wun counter screen on Android">
+  <defs>
+    <linearGradient id="andBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a1020"/>
+      <stop offset="1" stop-color="#070b16"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="480" fill="url(#andBg)"/>
+
+  <!-- Android device frame -->
+  <rect x="64" y="22" width="232" height="436" rx="22" fill="#0d1a30" stroke="#1f3a66" stroke-width="2"/>
+
+  <!-- status bar -->
+  <text x="80"  y="46" font-family="Roboto,system-ui,sans-serif" font-size="10" fill="#e7efff">9:41</text>
+  <g fill="#e7efff">
+    <circle cx="252" cy="42" r="2.5"/>
+    <rect x="262" y="38" width="14" height="8" rx="1"/>
+    <rect x="278" y="40" width="2"  height="4"/>
+  </g>
+
+  <!-- top app bar (Material 3) -->
+  <rect x="64" y="56" width="232" height="56" fill="#0d2b4f"/>
+  <text x="84"  y="92" font-family="Roboto,system-ui,sans-serif" font-size="20" font-weight="500" fill="#e7efff">Counter</text>
+
+  <!-- card -->
+  <rect x="84" y="148" width="192" height="200" rx="16" fill="#0d2b4f" stroke="#1f3a66" stroke-width="1"/>
+  <text x="180" y="192" text-anchor="middle" font-family="Roboto,system-ui,sans-serif" font-size="12" fill="#b6d4ff" opacity="0.85">value</text>
+  <text x="180" y="262" text-anchor="middle" font-family="Roboto,system-ui,sans-serif" font-size="64" font-weight="700" fill="#e7efff">3</text>
+
+  <!-- buttons (Material) -->
+  <rect x="100" y="286" width="68" height="40" rx="20" fill="#4f9aef"/>
+  <text x="134" y="312" text-anchor="middle" font-family="Roboto,system-ui,sans-serif" font-size="14" font-weight="600" fill="#0a1020">+</text>
+  <rect x="180" y="286" width="84" height="40" rx="20" fill="transparent" stroke="#4f9aef" stroke-width="1.5"/>
+  <text x="222" y="312" text-anchor="middle" font-family="Roboto,system-ui,sans-serif" font-size="13" font-weight="500" fill="#b6d4ff">reset</text>
+
+  <!-- nav bar -->
+  <rect x="64" y="430" width="232" height="28" fill="#0a1d3a"/>
+  <rect x="148" y="442" width="64" height="3" rx="1.5" fill="#e7efff" opacity="0.7"/>
+</svg>

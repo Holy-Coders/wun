@@ -3,27 +3,31 @@ title: Server-driven UI
 description: How Wun keeps state on the server and ships structure to clients.
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
 In Wun, the **server is the source of truth** for application state.
 Clients are thin: they receive a tree of UI structure, render it
 natively, and dispatch user actions back as data-shaped intents.
 
 ## The loop
 
-```
-                ┌─────────────────────────┐
-                │       wun-server        │
-                │  state (the truth) → tree
-                └──────────┬──────────────┘
-        SSE patches │       │ /intent (POST)
-                    ▼       │
-            ┌──────────────────────┐
-            │      client(s)       │
-            │  tree → native render
-            │  user action → intent
-            └──────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant C as Client (web / iOS / Android)
+    participant S as wun-server
+    Note over S: holds authoritative state<br/>and the component vocabulary
+    S-->>C: SSE: bootstrap {tree, state, screen-stack}
+    U->>C: tap :wun/Button
+    C->>C: optimistic morph (predict next state)
+    C->>S: POST /intent {id, intent, params}
+    S->>S: validate · run morph · update state
+    S-->>C: SSE: patch (replace/insert/remove)
+    Note over C: drop matching pending<br/>by intent id
 ```
 
-A single SSE channel per client. The server keeps a per-connection
+One SSE channel per client. The server keeps a per-connection
 "prior tree" and emits patches (`:replace` / `:insert` / `:remove`)
 that mutate the client's mirror. Intents POST to `/intent`, the
 server applies a pure morph to its state, then broadcasts the
@@ -61,6 +65,12 @@ with the intent's UUID, the client drops the matching pending entry.
 
 Match → no visible change. Mismatch → the UI converges on the
 authoritative server tree on the next confirmed envelope.
+
+<Aside type="tip" title="Pure morphs only">
+  The same `:morph` runs twice (server + client). Side effects
+  double-fire. Keep the morph pure; do `:fetch` on the server, dispatch
+  follow-up intents from the result. See [Intents](/concepts/intents/).
+</Aside>
 
 ## Why this works
 

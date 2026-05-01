@@ -2,7 +2,8 @@
  *
  * Inspired by ghostty.org and Forge: neutral background, one accent,
  * generous body type, dark-first. Most styling lives in Starlight's
- * defaults; we just override the accent palette and a few weights.
+ * defaults; we override the accent palette, type scale, and add a
+ * little atmosphere (gradient + faint grid) on dark mode.
  */
 
 :root {
@@ -12,8 +13,8 @@
   --sl-color-accent:      #0a66c2;
   --sl-color-accent-high: #1f4f86;
 
-  --sl-text-h1: 2.4rem;
-  --sl-text-h2: 1.6rem;
+  --sl-text-h1: 2.6rem;
+  --sl-text-h2: 1.75rem;
   --sl-text-h3: 1.25rem;
 
   --sl-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
@@ -28,7 +29,21 @@
   --sl-color-accent-high: #b6d4ff;
 }
 
-/* Tighten code blocks slightly + give them a subtle gradient on dark. */
+/* Tighter heading rhythm. */
+.sl-markdown-content h1,
+.sl-markdown-content h2 {
+  letter-spacing: -0.01em;
+}
+.sl-markdown-content h2 {
+  margin-top: 2.4em;
+}
+
+/* Body copy breathes a little. */
+.sl-markdown-content p {
+  line-height: 1.7;
+}
+
+/* Code blocks: rounded + subtle gradient on dark. */
 .expressive-code .frame {
   border-radius: 8px;
 }
@@ -39,4 +54,115 @@
 /* Make table-like component-vocabulary pages scan better. */
 table {
   font-feature-settings: "tnum" 1;
+}
+
+/* Dark-mode atmosphere: deep gradient body + faint grid. */
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #112042 0%, transparent 60%),
+    linear-gradient(180deg, #0a1020 0%, #070b16 100%);
+  background-attachment: fixed;
+}
+
+/* Reusable grid backdrop for hero sections. */
+.wun-grid-bg {
+  position: relative;
+  isolation: isolate;
+}
+.wun-grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: -2rem -1rem;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--wun-grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wun-grid-color) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+}
+:root {
+  --wun-grid-color: rgba(10, 102, 194, 0.08);
+}
+:root[data-theme="dark"] {
+  --wun-grid-color: rgba(120, 170, 240, 0.07);
+}
+
+/* LinkCard hover gets a friendlier border transition. */
+.sl-link-card {
+  transition: border-color 180ms ease, transform 180ms ease,
+              box-shadow 180ms ease;
+}
+.sl-link-card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -16px rgba(10, 102, 194, 0.4);
+}
+
+/* PlatformStrip: 4-up client screenshot row used on the index. */
+.client-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 2.5rem 0;
+}
+@media (min-width: 900px) {
+  .client-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.client-strip .client-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--sl-color-bg-nav);
+  transition: transform 200ms ease, border-color 200ms ease;
+}
+.client-strip .client-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--sl-color-accent);
+}
+.client-strip .client-card img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  display: block;
+  background: var(--sl-color-bg);
+}
+.client-strip .client-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-2);
+  padding: 0.6rem 0.8rem;
+  border-top: 1px solid var(--sl-color-gray-5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.client-strip .client-label::after {
+  content: "●";
+  color: var(--sl-color-accent);
+  font-size: 0.6rem;
+}
+
+/* Mermaid diagrams: center, give them breathing room, theme-aware. */
+.sl-markdown-content svg[id^="mermaid"] {
+  display: block;
+  margin: 1.5rem auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* The hero illustration sits a little tighter on splash pages. */
+.hero > .image {
+  filter: drop-shadow(0 12px 32px rgba(10, 102, 194, 0.18));
+}
+:root[data-theme="dark"] .hero > .image {
+  filter: drop-shadow(0 12px 32px rgba(79, 154, 239, 0.25));
 }

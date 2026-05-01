@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" width="480" height="320" role="img" aria-label="Server emits SSE patches to web, iOS, and Android clients; clients send intents back">
+  <defs>
+    <linearGradient id="sseDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f9aef" stop-opacity="0"/>
+      <stop offset="0.4" stop-color="#4f9aef" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#b6d4ff"/>
+    </linearGradient>
+    <linearGradient id="intentDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b6d4ff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#b6d4ff"/>
+    </linearGradient>
+    <marker id="arrowD" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4f9aef"/>
+    </marker>
+    <marker id="arrowD2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b6d4ff"/>
+    </marker>
+  </defs>
+
+  <!-- Server box -->
+  <g>
+    <rect x="40" y="120" width="120" height="80" rx="14" fill="#0d1a30" stroke="#4f9aef" stroke-width="2"/>
+    <text x="100" y="148" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700" fill="#e7efff">wun-server</text>
+    <text x="100" y="170" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#b6d4ff">state → tree</text>
+    <text x="100" y="186" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="#b6d4ff" opacity="0.8">SSE patches</text>
+  </g>
+
+  <!-- SSE arrows fanning out -->
+  <g fill="none" stroke="url(#sseDark)" stroke-width="2.2" stroke-linecap="round">
+    <path d="M160 145 C 220 135, 260 90,  330 70"  marker-end="url(#arrowD)"/>
+    <path d="M160 160 C 230 160, 260 160, 330 160" marker-end="url(#arrowD)"/>
+    <path d="M160 175 C 220 185, 260 230, 330 250" marker-end="url(#arrowD)"/>
+  </g>
+
+  <!-- Three client glyphs -->
+  <g font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="600" fill="#e7efff">
+    <!-- Web -->
+    <g>
+      <rect x="330" y="40"  width="110" height="72" rx="8" fill="#0d1a30" stroke="#4f9aef" stroke-width="1.6"/>
+      <rect x="330" y="40"  width="110" height="14" rx="8" fill="#4f9aef"/>
+      <circle cx="338" cy="47" r="2" fill="#0a1020"/>
+      <circle cx="346" cy="47" r="2" fill="#0a1020" opacity="0.8"/>
+      <circle cx="354" cy="47" r="2" fill="#0a1020" opacity="0.6"/>
+      <rect x="342" y="64"  width="86" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="342" y="76"  width="60" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="342" y="92"  width="40" height="12" rx="3" fill="#4f9aef"/>
+      <text x="385" y="128" text-anchor="middle">web</text>
+    </g>
+    <!-- iOS -->
+    <g>
+      <rect x="340" y="128" width="90" height="64" rx="12" fill="#0d1a30" stroke="#4f9aef" stroke-width="1.6"/>
+      <rect x="354" y="138" width="62" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="354" y="150" width="46" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="354" y="166" width="34" height="14" rx="4" fill="#4f9aef"/>
+      <text x="385" y="208" text-anchor="middle">iOS</text>
+    </g>
+    <!-- Android -->
+    <g>
+      <rect x="330" y="220" width="110" height="72" rx="10" fill="#0d1a30" stroke="#4f9aef" stroke-width="1.6"/>
+      <rect x="342" y="232" width="86" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="342" y="244" width="60" height="6" rx="2" fill="#1f3a66"/>
+      <rect x="342" y="262" width="44" height="14" rx="3" fill="#4f9aef"/>
+      <text x="385" y="308" text-anchor="middle">Android</text>
+    </g>
+  </g>
+
+  <!-- Intent return arrow looping back -->
+  <path d="M330 285 C 240 290, 180 270, 100 240 L 100 210"
+        fill="none" stroke="url(#intentDark)" stroke-width="2" stroke-dasharray="4 4"
+        marker-end="url(#arrowD2)" opacity="0.85"/>
+  <text x="220" y="278" font-family="ui-monospace,monospace" font-size="10.5" fill="#b6d4ff">intent (POST)</text>
+</svg>

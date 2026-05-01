@@ -3,49 +3,61 @@ title: Wun
 description: Clojure-first cross-platform server-driven UI framework.
 template: splash
 hero:
-  tagline: Server-driven UI for native apps and the web. One vocabulary, one wire, three platforms.
+  tagline: Server-driven UI for native apps and the web. One vocabulary, one wire, three platforms — rendering in lock-step.
+  image:
+    dark:  ../../assets/hero-loop-dark.svg
+    light: ../../assets/hero-loop-light.svg
   actions:
     - text: Get started
       link: /getting-started/install/
       icon: right-arrow
       variant: primary
+    - text: Why Wun
+      link: /getting-started/why-wun/
+      icon: open-book
+      variant: minimal
     - text: View on GitHub
       link: https://github.com/Holy-Coders/wun
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import PlatformStrip from '../../components/PlatformStrip.astro';
 
-## Why Wun
+## The same screen, on every platform
 
-The server holds the UI state. It emits intent-shaped UI trees as
-patches over a single SSE channel per client. Every client — web,
-iOS, Android — mirrors the tree, renders natively, and sends
-intents back. Components and intents are defined **once** in
-`.cljc`; renderers register per platform; unsupported components
-fall back to WebView frames seamlessly.
+<div class="wun-grid-bg">
+  <PlatformStrip />
+</div>
+
+The server holds state. Patches stream over a single SSE channel.
+Every client renders natively from the same tree. Tap a button, the
+intent flies back, the server morphs state, and every connected
+client sees the new tree on the next patch.
+
+## What you get
 
 <CardGrid>
-  <Card title="Three macros" icon="seti:clojure">
-    `defcomponent`, `defscreen`, `definent` are the only API surface.
-    Framework code uses the same APIs as user code — there is no
-    privileged path.
-  </Card>
-  <Card title="One wire format" icon="seti:json">
-    Transit-json or JSON envelopes carry patches, intents, screen
-    metadata, and connection state. The same shape lands on the web,
-    in SwiftUI, and in Compose.
-  </Card>
-  <Card title="Optimistic by default" icon="rocket">
-    `:morph` runs identically on server (authoritative) and client
-    (predictive). Intents reconcile via UUID; the UI updates before
-    the round-trip completes.
-  </Card>
-  <Card title="WebFrame fallback" icon="seti:html">
-    Any component the native client lacks collapses to a server-rendered
-    HTML frame at the smallest containing subtree. New components ship
-    without breaking older clients.
-  </Card>
+  <LinkCard
+    title="Three macros, total"
+    href="/concepts/components/"
+    description="defcomponent, defscreen, definent are the entire authoring API. Framework code uses the same APIs as user code — there is no privileged path."
+  />
+  <LinkCard
+    title="One wire format"
+    href="/concepts/wire-format/"
+    description="Transit-json or JSON envelopes carry patches, intents, screen metadata, and connection state. The same shape lands on the web, in SwiftUI, and in Compose."
+  />
+  <LinkCard
+    title="Optimistic by default"
+    href="/concepts/intents/"
+    description="The :morph fn runs identically on server (authoritative) and client (predictive). Intents reconcile via UUID; the UI updates before the round-trip completes."
+  />
+  <LinkCard
+    title="WebFrame fallback"
+    href="/concepts/capabilities/"
+    description="Any component the native client lacks collapses to a server-rendered HTML frame at the smallest containing subtree. New components ship without breaking older clients."
+  />
 </CardGrid>
 
 ## Inspired by

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 480" width="360" height="480" role="img" aria-label="Wun counter screen on macOS">
+  <defs>
+    <linearGradient id="macBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1a30"/>
+      <stop offset="1" stop-color="#070b16"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="480" fill="url(#macBg)"/>
+
+  <!-- mac window -->
+  <rect x="24" y="80" width="312" height="316" rx="12" fill="#0d2b4f" stroke="#1f3a66" stroke-width="1"/>
+  <rect x="24" y="80" width="312" height="32" rx="12" fill="#0a1020"/>
+  <rect x="24" y="100" width="312" height="12" fill="#0a1020"/>
+  <circle cx="44" cy="96" r="5" fill="#ff5f57"/>
+  <circle cx="62" cy="96" r="5" fill="#febc2e"/>
+  <circle cx="80" cy="96" r="5" fill="#28c840"/>
+  <text x="180" y="100" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="11" font-weight="600" fill="#b6d4ff">myapp — Counter</text>
+
+  <!-- toolbar -->
+  <rect x="24" y="112" width="312" height="36" fill="#0a1d3a"/>
+  <text x="40" y="134" font-family="-apple-system,system-ui,sans-serif" font-size="11" fill="#b6d4ff" opacity="0.8">/ counter</text>
+
+  <!-- card -->
+  <rect x="56" y="172" width="248" height="180" rx="12" fill="#0d1a30" stroke="#1f3a66" stroke-width="1"/>
+  <text x="180" y="208" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="11" fill="#b6d4ff" opacity="0.85">value</text>
+  <text x="180" y="276" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="64" font-weight="700" fill="#e7efff">3</text>
+
+  <!-- buttons -->
+  <rect x="92"  y="298" width="76" height="36" rx="6" fill="#4f9aef"/>
+  <text x="130" y="322" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="600" fill="#0a1020">+</text>
+  <rect x="184" y="298" width="84" height="36" rx="6" fill="transparent" stroke="#4f9aef" stroke-width="1.5"/>
+  <text x="226" y="322" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="500" fill="#b6d4ff">reset</text>
+
+  <!-- status bar -->
+  <text x="40"  y="378" font-family="ui-monospace,monospace" font-size="9" fill="#4f9aef" opacity="0.6">connected • SSE</text>
+  <circle cx="320" cy="375" r="3" fill="#28c840"/>
+</svg>
