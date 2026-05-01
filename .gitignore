@@ -11,3 +11,6 @@ tmp/
 # Per-user MCP / editor config.
 .mcp.json
 .claude/
+
+# node_modules anywhere in the tree (mcp/, wun-web/, docs-site/).
+node_modules/

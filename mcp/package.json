@@ -1,0 +1,19 @@
+{
+  "name": "wun-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "MCP server exposing Wun developer tools to LLM clients (Claude Desktop, Cursor, Cline, etc.)",
+  "bin": {
+    "wun-mcp": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
