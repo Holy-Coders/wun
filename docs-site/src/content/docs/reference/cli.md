@@ -3,6 +3,11 @@ title: CLI
 description: Every wun subcommand at a glance.
 ---
 
+> **TL;DR.** One command, several subcommands. `wun doctor` checks
+> your toolchain. `wun new app` scaffolds a project. `wun add
+> component / screen / intent` splices cross-platform plumbing
+> idempotently. `wun dev` runs server + web watch together.
+
 The `wun` CLI is a single-file babashka script (`cli/wun.bb`), invoked
 via the `wun` shell wrapper installed by `install.sh`. All commands
 walk up from `$PWD` looking for `wun-server/deps.edn`, so they work
@@ -122,3 +127,12 @@ wun help
 ```
 
 One-screen summary of every subcommand.
+
+## Read next
+
+- [Your first app](/getting-started/your-first-app/) — `wun new app`
+  walked end-to-end.
+- [Migrations](/reference/migrations/) — when to ship a codemod
+  versus a CHANGELOG note.
+- [MCP server](/ai/mcp/) — the same scaffolders exposed to LLM
+  clients via Model Context Protocol.

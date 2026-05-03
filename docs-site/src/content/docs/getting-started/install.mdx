@@ -5,6 +5,11 @@ description: Set up the wun CLI on macOS / Linux.
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
+> **TL;DR.** Clone the repo, run `./install.sh`, then
+> `wun doctor` should print green checks. The CLI is a single
+> Babashka script that walks up to find the monorepo root, so it
+> works from anywhere inside a Wun checkout.
+
 ## Prerequisites
 
 Wun ships as a monorepo of language-native runtimes. You need:
@@ -74,3 +79,11 @@ If the local checkout falls behind, the next `wun <cmd>` shows:
 ```
 
 Hit `y` to fast-forward and re-run migrations, or `N` to skip.
+
+## Read next
+
+- [Your first app](/getting-started/your-first-app/) — `wun new app`
+  walked end-to-end.
+- [Why Wun](/getting-started/why-wun/) — when SDUI is the right
+  hammer.
+- [CLI reference](/reference/cli/) — every subcommand.

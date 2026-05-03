@@ -5,6 +5,11 @@ description: How Wun keeps the UI alive when the SSE stream drops.
 
 import { Aside } from '@astrojs/starlight/components';
 
+> **TL;DR.** The last tree stays rendered, dimmed, while the SSE
+> stream is down. Clicks queue locally with their UUID; on reconnect
+> they're replayed and deduped against the server's LRU. The user
+> never sees a blank screen and never loses a click.
+
 ## The contract
 
 When the SSE stream drops, three things have to be true for the
@@ -121,3 +126,12 @@ permanently shadow the queue.
   delays of >1s under load, check `proxy_buffering off;` and
   `X-Accel-Buffering: no` first.
 </Aside>
+
+## Read next
+
+- [Head & hot-cache](/architecture/head-and-cache/) — the
+  localStorage / UserDefaults snapshots that hydrate cold starts.
+- [Intents](/concepts/intents/) — UUIDs, the pending queue, and
+  why morphs are pure.
+- [Wire format](/concepts/wire-format/) — what the bootstrap
+  envelope looks like on (re)connect.

@@ -3,6 +3,12 @@ title: Intents
 description: Server-authoritative state mutations with optimistic prediction.
 ---
 
+> **TL;DR.** An intent is a UUID-tagged action. Its `:morph` is a
+> pure `(state, params) → state` fn that runs on **both** server
+> (authoritative) and client (optimistic). The UI updates the moment
+> the user clicks; the server's confirmation envelope just resolves
+> the pending entry.
+
 An intent is a discrete state mutation: "increment counter",
 "mark todo done", "log out". Wun's wire model is built around them:
 intents flow client → server, the server applies a pure morph,
@@ -109,3 +115,11 @@ These bypass the morph registry — they mutate per-connection state
   fields are fine, removing existing fields needs a migration.
 - **Forgetting the param schema.** A missing schema means any
   payload is accepted; debugging optimistic divergence gets nasty.
+
+## Read next
+
+- [Wire format](/concepts/wire-format/) — the intent envelope and
+  the patch envelope it triggers.
+- [Reconnect & retry](/architecture/reconnect/) — how pending
+  intents survive an SSE drop and replay safely.
+- [Server-driven UI](/concepts/sdui/) — the full request loop.

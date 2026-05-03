@@ -3,6 +3,10 @@ title: Migrations
 description: Codemod scripts for breaking framework changes.
 ---
 
+> **TL;DR.** Breaking framework changes ship with codemod
+> scripts under `migrations/`. `wun upgrade` surfaces them; `wun
+> migrations apply <id>` runs them idempotently against your app.
+
 When the framework changes an API shape — a prop rename, an
 intent schema change, a namespace move — we ship a migration in
 `migrations/` so consumer projects can transform their code

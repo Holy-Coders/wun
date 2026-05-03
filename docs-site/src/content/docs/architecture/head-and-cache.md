@@ -5,6 +5,12 @@ description: How Wun handles document head metadata and survives reconnects.
 
 import { Aside } from '@astrojs/starlight/components';
 
+> **TL;DR.** `:meta` is per-screen page metadata; it rides on
+> every patch envelope and is applied by each platform: web sets
+> `<title>`, iOS sets `.navigationTitle`, Android sets the Compose
+> Window title. Hot-cache snapshots persist locally so cold-start
+> hydration shows last-known UI before the SSE handshake completes.
+
 This page mirrors `docs/architecture/head-and-cache.md` in the
 monorepo. It captures the LiveView/Hotwire mapping for two adjacent
 concerns: cross-platform "head" metadata and resilience to drops +
@@ -72,3 +78,11 @@ Borrowed from LiveView's `phx-disconnected` body class.
 The user-visible effect: clicks during a brief outage feel
 instantaneous, then either confirm silently (server already had
 them) or land on reconnect (server hadn't).
+
+## Read next
+
+- [Reconnect & retry](/architecture/reconnect/) — the full
+  pending-queue + LRU-dedup story.
+- [Path configuration](/architecture/path-config/) — `:present
+  :modal` vs `:push` and the per-connection screen stack.
+- [Screens](/concepts/screens/) — how `:meta` is declared.

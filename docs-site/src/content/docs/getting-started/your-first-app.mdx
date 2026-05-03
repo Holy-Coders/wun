@@ -4,6 +4,13 @@ description: Scaffold, run, and extend a Wun app.
 ---
 
 import { Steps, FileTree, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { withBase } from '~/utils/base.mjs';
+
+> **TL;DR.** `wun new app myapp` scaffolds a counter screen and
+> all four runtimes side-by-side. `wun dev` runs the server +
+> shadow-cljs watch together; `wun run ios` and `wun run android`
+> launch the native demos. Tap `+` in any of them, the others
+> update on the next patch.
 
 A new Wun app is a sibling of the wun monorepo — its `deps.edn`
 references the framework via `:local/root` paths to `../wun/wun-*`
@@ -129,22 +136,22 @@ is fine for niche / admin-only screens.
 <CardGrid>
   <LinkCard
     title="Components"
-    href="/concepts/components/"
+    href={withBase('/concepts/components/')}
     description="The namespaced vocabulary."
   />
   <LinkCard
     title="Screens"
-    href="/concepts/screens/"
+    href={withBase('/concepts/screens/')}
     description="Paths, meta, presentation."
   />
   <LinkCard
     title="Intents"
-    href="/concepts/intents/"
+    href={withBase('/concepts/intents/')}
     description="Morphs, validation, optimistic prediction."
   />
   <LinkCard
     title="CLI reference"
-    href="/reference/cli/"
+    href={withBase('/reference/cli/')}
     description="Every wun subcommand in one page."
   />
 </CardGrid>

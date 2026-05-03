@@ -1,14 +1,32 @@
 /* Wun docs theme.
  *
- * Inspired by ghostty.org and Forge: neutral background, one accent,
- * generous body type, dark-first. Most styling lives in Starlight's
- * defaults; we override the accent palette, type scale, and add a
- * little atmosphere (gradient + faint grid) on dark mode.
+ * Direction: ghostty.org / Stripe / Linear / Vercel — calm neutrals,
+ * a single saturated accent, generous typography, dark-mode-first.
+ * Most styling stays Starlight default; these overrides tune the
+ * accent palette, type scale, and add atmosphere on the splash page.
+ *
+ * Section index:
+ *   1. tokens
+ *   2. typography
+ *   3. code blocks
+ *   4. dark-mode body atmosphere
+ *   5. .wun-grid-bg backdrop
+ *   6. Starlight LinkCard polish
+ *   7. PlatformStrip (4-up clients)
+ *   8. mermaid diagrams
+ *   9. hero illustration drop-shadow
+ *  10. .wun-eyebrow status pill
+ *  11. .wun-features grid (Feature.astro)
+ *  12. .wun-cta-row (mid-page CTA pair)
+ *  13. .wun-compare comparison table
+ *  14. .wun-term decorative terminal
  */
 
+/* =========================================================
+ * 1. tokens
+ * ========================================================= */
 :root {
-  /* Wun accent: #0a66c2 (the same blue we use for the WebFrame
-   * client banner and theme-color meta). */
+  /* Wun accent: #0a66c2 (web client banner + theme-color meta). */
   --sl-color-accent-low:  #cce0f5;
   --sl-color-accent:      #0a66c2;
   --sl-color-accent-high: #1f4f86;
@@ -21,15 +39,37 @@
              Roboto, "Helvetica Neue", Arial, sans-serif;
   --sl-font-mono: ui-monospace, "SF Mono", Menlo, Consolas,
                   "Liberation Mono", monospace;
+
+  --wun-grid-color:    rgba(10, 102, 194, 0.08);
+  --wun-feature-bg:    var(--sl-color-bg-nav);
+  --wun-feature-bord:  var(--sl-color-gray-5);
+  --wun-feature-icon:  var(--sl-color-accent);
+  --wun-eyebrow-bg:    rgba(10, 102, 194, 0.10);
+  --wun-eyebrow-fg:    #1f4f86;
+  --wun-term-bg:       #0d1426;
+  --wun-term-bord:     #1c2a4d;
+  --wun-term-prompt:   #4f9aef;
+  --wun-term-cmd:      #e7efff;
+  --wun-term-out:      #b6d4ff;
+  --wun-term-comment:  #6f86b3;
 }
 
 :root[data-theme="dark"] {
   --sl-color-accent-low:  #0d2b4f;
   --sl-color-accent:      #4f9aef;
   --sl-color-accent-high: #b6d4ff;
+
+  --wun-grid-color:    rgba(120, 170, 240, 0.07);
+  --wun-feature-bg:    rgba(255, 255, 255, 0.02);
+  --wun-feature-bord:  rgba(255, 255, 255, 0.08);
+  --wun-feature-icon:  #4f9aef;
+  --wun-eyebrow-bg:    rgba(79, 154, 239, 0.12);
+  --wun-eyebrow-fg:    #b6d4ff;
 }
 
-/* Tighter heading rhythm. */
+/* =========================================================
+ * 2. typography
+ * ========================================================= */
 .sl-markdown-content h1,
 .sl-markdown-content h2 {
   letter-spacing: -0.01em;
@@ -37,34 +77,52 @@
 .sl-markdown-content h2 {
   margin-top: 2.4em;
 }
-
-/* Body copy breathes a little. */
 .sl-markdown-content p {
   line-height: 1.7;
 }
 
-/* Code blocks: rounded + subtle gradient on dark. */
+/* Slightly punchier hero on the splash page. */
+.hero h1 {
+  font-size: clamp(2.4rem, 5vw + 1rem, 3.6rem);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.hero .tagline {
+  font-size: clamp(1rem, 0.6vw + 0.95rem, 1.18rem);
+  max-width: 60ch;
+}
+
+/* =========================================================
+ * 3. code blocks
+ * ========================================================= */
 .expressive-code .frame {
   border-radius: 8px;
 }
 :root[data-theme="dark"] .expressive-code .frame {
   background: linear-gradient(180deg, #0f1729 0%, #0a1020 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -24px rgba(10, 102, 194, 0.5);
 }
 
-/* Make table-like component-vocabulary pages scan better. */
 table {
   font-feature-settings: "tnum" 1;
 }
 
-/* Dark-mode atmosphere: deep gradient body + faint grid. */
+/* =========================================================
+ * 4. dark-mode body atmosphere
+ * ========================================================= */
 :root[data-theme="dark"] body {
   background:
     radial-gradient(1200px 600px at 50% -10%, #112042 0%, transparent 60%),
+    radial-gradient(800px 400px at 90% 110%, #0d2b4f 0%, transparent 60%),
     linear-gradient(180deg, #0a1020 0%, #070b16 100%);
   background-attachment: fixed;
 }
 
-/* Reusable grid backdrop for hero sections. */
+/* =========================================================
+ * 5. .wun-grid-bg backdrop
+ * ========================================================= */
 .wun-grid-bg {
   position: relative;
   isolation: isolate;
@@ -82,14 +140,10 @@ table {
   mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
   -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
 }
-:root {
-  --wun-grid-color: rgba(10, 102, 194, 0.08);
-}
-:root[data-theme="dark"] {
-  --wun-grid-color: rgba(120, 170, 240, 0.07);
-}
 
-/* LinkCard hover gets a friendlier border transition. */
+/* =========================================================
+ * 6. Starlight LinkCard polish
+ * ========================================================= */
 .sl-link-card {
   transition: border-color 180ms ease, transform 180ms ease,
               box-shadow 180ms ease;
@@ -100,7 +154,9 @@ table {
   box-shadow: 0 8px 24px -16px rgba(10, 102, 194, 0.4);
 }
 
-/* PlatformStrip: 4-up client screenshot row used on the index. */
+/* =========================================================
+ * 7. PlatformStrip (4-up clients)
+ * ========================================================= */
 .client-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -119,11 +175,13 @@ table {
   border-radius: 12px;
   overflow: hidden;
   background: var(--sl-color-bg-nav);
-  transition: transform 200ms ease, border-color 200ms ease;
+  transition: transform 200ms ease, border-color 200ms ease,
+              box-shadow 200ms ease;
 }
 .client-strip .client-card:hover {
   transform: translateY(-2px);
   border-color: var(--sl-color-accent);
+  box-shadow: 0 18px 36px -28px rgba(10, 102, 194, 0.55);
 }
 .client-strip .client-card img {
   width: 100%;
@@ -151,7 +209,9 @@ table {
   font-size: 0.6rem;
 }
 
-/* Mermaid diagrams: center, give them breathing room, theme-aware. */
+/* =========================================================
+ * 8. mermaid diagrams
+ * ========================================================= */
 .sl-markdown-content svg[id^="mermaid"] {
   display: block;
   margin: 1.5rem auto;
@@ -159,10 +219,296 @@ table {
   height: auto;
 }
 
-/* The hero illustration sits a little tighter on splash pages. */
+/* =========================================================
+ * 9. hero illustration drop-shadow
+ * ========================================================= */
 .hero > .image {
   filter: drop-shadow(0 12px 32px rgba(10, 102, 194, 0.18));
 }
 :root[data-theme="dark"] .hero > .image {
-  filter: drop-shadow(0 12px 32px rgba(79, 154, 239, 0.25));
+  filter: drop-shadow(0 18px 40px rgba(79, 154, 239, 0.28));
 }
+
+/* =========================================================
+ * 10. .wun-eyebrow status pill
+ * ========================================================= */
+.wun-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  margin: 0.5rem 0 2.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--wun-eyebrow-fg);
+  background: var(--wun-eyebrow-bg);
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 25%, transparent);
+  border-radius: 999px;
+}
+.wun-eyebrow__dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--sl-color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+  animation: wun-pulse 2.4s ease-in-out infinite;
+}
+@keyframes wun-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* =========================================================
+ * 11. .wun-features grid (Feature.astro)
+ * ========================================================= */
+.wun-features {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0 2.5rem;
+}
+@media (min-width: 720px) {
+  .wun-features { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1080px) {
+  .wun-features { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+.wun-feature {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 0.5rem;
+  padding: 1.2rem 1.2rem 1rem;
+  background: var(--wun-feature-bg);
+  border: 1px solid var(--wun-feature-bord);
+  border-radius: 14px;
+  color: inherit;
+  text-decoration: none;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: border-color 200ms ease, transform 200ms ease,
+              box-shadow 200ms ease;
+}
+.wun-feature::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 2px;
+  background: linear-gradient(90deg,
+                transparent 0%,
+                var(--sl-color-accent) 30%,
+                var(--sl-color-accent) 70%,
+                transparent 100%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.wun-feature:hover {
+  border-color: color-mix(in srgb, var(--sl-color-accent) 60%, transparent);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 36px -28px rgba(10, 102, 194, 0.55);
+}
+.wun-feature:hover::before { opacity: 1; }
+
+.wun-feature__icon {
+  width: 2.2rem;
+  height: 2.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sl-color-accent) 12%, transparent);
+  color: var(--wun-feature-icon);
+}
+.wun-feature__icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.wun-feature__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sl-color-text);
+}
+.wun-feature__body {
+  color: var(--sl-color-gray-2);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+.wun-feature__body code {
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--sl-color-accent);
+}
+.wun-feature__cta {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--sl-color-accent);
+  opacity: 0.7;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.wun-feature:hover .wun-feature__cta {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* =========================================================
+ * 12. .wun-cta-row (mid-page CTA pair under macros tab)
+ * ========================================================= */
+.wun-cta-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 1.5rem 0 2rem;
+}
+@media (min-width: 720px) {
+  .wun-cta-row { grid-template-columns: 1fr 1fr; }
+}
+.wun-cta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.95rem 1.1rem;
+  background: var(--wun-feature-bg);
+  border: 1px solid var(--wun-feature-bord);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+.wun-cta-card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-1px);
+}
+.wun-cta-card strong {
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--sl-color-accent);
+}
+.wun-cta-card span {
+  color: var(--sl-color-gray-2);
+  font-size: 0.92rem;
+}
+.wun-cta-card code {
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--sl-color-accent);
+}
+
+/* =========================================================
+ * 13. .wun-compare comparison table
+ * ========================================================= */
+.wun-compare {
+  margin: 1.4rem 0 2rem;
+  border: 1px solid var(--wun-feature-bord);
+  border-radius: 14px;
+  background: var(--wun-feature-bg);
+  overflow: hidden;
+  /* Horizontal scroll on narrow screens. */
+  overflow-x: auto;
+}
+.wun-compare table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 720px;
+}
+.wun-compare th,
+.wun-compare td {
+  padding: 0.75rem 0.9rem;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid var(--wun-feature-bord);
+}
+.wun-compare thead th {
+  background: color-mix(in srgb, var(--sl-color-accent) 8%, transparent);
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sl-color-gray-1);
+}
+.wun-compare tbody tr:last-child th,
+.wun-compare tbody tr:last-child td {
+  border-bottom: 0;
+}
+.wun-compare tbody th {
+  font-weight: 600;
+  color: var(--sl-color-text);
+  background: transparent;
+  width: 24%;
+}
+.wun-compare td.is-wun {
+  color: var(--sl-color-text);
+  background: color-mix(in srgb, var(--sl-color-accent) 6%, transparent);
+  font-weight: 500;
+}
+.wun-compare td {
+  color: var(--sl-color-gray-2);
+}
+
+/* =========================================================
+ * 14. .wun-term decorative terminal
+ * ========================================================= */
+.wun-term {
+  margin: 1.2rem 0;
+  border-radius: 12px;
+  background: var(--wun-term-bg);
+  border: 1px solid var(--wun-term-bord);
+  overflow: hidden;
+  box-shadow: 0 18px 40px -32px rgba(10, 102, 194, 0.6);
+}
+.wun-term__chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--wun-term-bord);
+}
+.wun-term__dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+.wun-term__dot[data-c="r"] { background: #ff5f57; }
+.wun-term__dot[data-c="y"] { background: #febc2e; }
+.wun-term__dot[data-c="g"] { background: #28c840; }
+.wun-term__title {
+  margin-left: auto;
+  margin-right: auto;
+  color: var(--wun-term-comment);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  font-family: var(--sl-font-mono);
+}
+.wun-term__body {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  color: var(--wun-term-cmd);
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+}
+.wun-term__body code {
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+}
+.wun-term__line--prompt::before  { content: "$ "; color: var(--wun-term-prompt); }
+.wun-term__line--cmd             { color: var(--wun-term-cmd); }
+.wun-term__line--out             { color: var(--wun-term-out); }
+.wun-term__line--comment         { color: var(--wun-term-comment); }
+.wun-term__line--comment::before { content: "# "; color: var(--wun-term-comment); }

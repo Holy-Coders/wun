@@ -3,6 +3,11 @@ title: Screens
 description: Paths, render fns, page metadata, and presentation.
 ---
 
+> **TL;DR.** Screens are routes. Each one is a path + a pure
+> `(state) -> tree` render fn, optional page metadata, and an
+> optional presentation hint (`:push` for full-screen, `:modal`
+> for sheets / dialogs).
+
 A screen is a route in the app: `:counter/main` at `/`,
 `:auth/login` at `/login`, etc. Screens own their render fn over
 state, optional page metadata (title / description / OpenGraph),
@@ -88,3 +93,13 @@ client-side router. Clients tell the server what path they want
 (SSE `?path=...`); the server picks the matching screen and renders
 it. URL changes on web are synced via `pushState` so reload works,
 but the URL is observation, not control.
+
+## Read next
+
+- [Path configuration](/architecture/path-config/) — `:present`,
+  modals, and how the screen-stack works per connection.
+- [Intents](/concepts/intents/) — `:wun/navigate`, `:wun/pop`,
+  `:wun/replace`, and how user actions move the stack.
+- [Head & hot-cache](/architecture/head-and-cache/) — how `:meta`
+  becomes `<title>` on web, `.navigationTitle` on iOS, the Compose
+  window title on Android.

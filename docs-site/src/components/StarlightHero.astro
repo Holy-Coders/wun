@@ -1,0 +1,93 @@
+---
+/**
+ * StarlightHero: a near-verbatim copy of @astrojs/starlight's Hero.astro
+ * with one critical fix — action links get base-prefixed via withBase().
+ *
+ * Starlight 0.30.5 passes `link` (from frontmatter `actions[].link`)
+ * straight through to <LinkButton href={link}>, which means absolute
+ * paths like `/getting-started/install/` 404 on a base-pathed deploy
+ * (e.g. GitHub Pages at /wun/...). This wrapper restores the expected
+ * behaviour without forking Starlight.
+ *
+ * Wired in via `astro.config.mjs` → starlight.components.Hero.
+ *
+ * Keep this file in sync with the upstream Hero whenever Starlight
+ * is upgraded — the rest of the markup is intentionally unchanged so
+ * the styles in node_modules/@astrojs/starlight/components/Hero.astro
+ * keep targeting the same DOM (we keep the wrapper class names).
+ */
+
+import { Image } from "astro:assets";
+import { LinkButton } from "@astrojs/starlight/components";
+import { withBase } from "../utils/base.mjs";
+
+// Mirrors @astrojs/starlight/constants.ts (not in the public exports
+// map, so we re-declare locally — value has been "_top" since 0.20).
+const PAGE_TITLE_ID = "_top";
+
+const { data } = Astro.props.entry;
+const { title = data.title, tagline, image, actions = [] } = data.hero || {};
+
+const imageAttrs = {
+  loading: "eager" as const,
+  decoding: "async" as const,
+  width: 400,
+  height: 400,
+  alt: image?.alt || "",
+};
+
+let darkImage:  ImageMetadata | undefined;
+let lightImage: ImageMetadata | undefined;
+let rawHtml:    string        | undefined;
+if (image) {
+  if ("file" in image) {
+    darkImage = image.file;
+  } else if ("dark" in image) {
+    darkImage  = image.dark;
+    lightImage = image.light;
+  } else {
+    rawHtml = image.html;
+  }
+}
+
+const isExternal = (href: string) =>
+  /^[a-z]+:\/\//i.test(href) || href.startsWith("//");
+const fixHref = (href: string) =>
+  isExternal(href) ? href : (href.startsWith("/") ? withBase(href) : href);
+---
+
+<div class="hero">
+  {darkImage && (
+    <Image
+      src={darkImage}
+      {...imageAttrs}
+      class:list={{ "light:sl-hidden": Boolean(lightImage) }}
+    />
+  )}
+  {lightImage && <Image src={lightImage} {...imageAttrs} class="dark:sl-hidden" />}
+  {rawHtml && <div class="hero-html sl-flex" set:html={rawHtml} />}
+  <div class="sl-flex stack">
+    <div class="sl-flex copy">
+      <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+      {tagline && <div class="tagline" set:html={tagline} />}
+    </div>
+    {actions.length > 0 && (
+      <div class="sl-flex actions">
+        {actions.map(
+          ({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+            <LinkButton
+              href={fixHref(href)}
+              variant={variant}
+              icon={icon?.name}
+              class:list={[className]}
+              {...attrs}
+            >
+              {text}
+              {icon?.html && <Fragment set:html={icon.html} />}
+            </LinkButton>
+          ),
+        )}
+      </div>
+    )}
+  </div>
+</div>

@@ -3,6 +3,12 @@ title: Working with agents
 description: How Wun integrates with Claude, Cursor, Cline, and other LLM coding agents.
 ---
 
+> **TL;DR.** Wun ships three first-class surfaces for AI coding
+> agents: a repo-root `CLAUDE.md` / `AGENTS.md` that orients them
+> on the framework's three macros, a `skills/` directory of
+> narrow playbooks, and an MCP server exposing the dev CLI to
+> tools like Claude Desktop and Cursor.
+
 Wun treats LLM coding agents as a first-class user. The repo ships
 three surfaces that orient agents the moment they land:
 
@@ -51,7 +57,7 @@ Browse them in the [skills directory on GitHub](https://github.com/Holy-Coders/w
 
 ## MCP server
 
-The MCP server (see [MCP server](../ai/mcp/)) exposes five tools to
+The MCP server (see [MCP server](/ai/mcp/)) exposes five tools to
 LLM clients:
 
 - `wun_status` — coverage matrix
@@ -74,7 +80,7 @@ on demand.
 
 - **Lean on the architecture docs for hard questions.** The
   `docs/architecture/` files (also in this site under
-  [Architecture](../architecture/head-and-cache/)) are heavily
+  [Architecture](/architecture/head-and-cache/)) are heavily
   commented; the agent does well when pointed at them rather than
   re-deriving the design.
 

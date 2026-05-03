@@ -5,6 +5,11 @@ description: The namespaced vocabulary, schemas, and platform bindings.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+> **TL;DR.** Components are namespaced keywords with a Malli
+> schema. Each platform registers its own renderer for that keyword.
+> `:wun/Stack` and `:myapp/Card` go through the same path —
+> framework code has no special privilege.
+
 A component is a **namespaced keyword** with a per-platform
 renderer. `:wun/Stack`, `:wun/Text`, `:wun/Button` are the
 foundational set the framework ships; `:myapp/Card`,
@@ -125,3 +130,13 @@ component               web  ios  android  server-html
 
 `✓` native renderer present · `◌` WebFrame fallback ·
 `·` server default HTML.
+
+## Read next
+
+- [Component vocabulary](/reference/components/) — every `:wun/*`
+  primitive Wun ships, and how `:wun/Button` is bound on each
+  platform.
+- [Capability negotiation](/concepts/capabilities/) — how the
+  server collapses unsupported subtrees to a sandboxed WebFrame.
+- [Wire format](/concepts/wire-format/) — the Hiccup-shaped tree on
+  the wire.

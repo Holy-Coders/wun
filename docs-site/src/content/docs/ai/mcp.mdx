@@ -4,6 +4,13 @@ description: Wire Wun's developer tools into any MCP-aware LLM client.
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { withBase } from '~/utils/base.mjs';
+
+> **TL;DR.** A stdio Model Context Protocol server that exposes
+> the `wun` CLI's scaffolders + status to any MCP-aware agent
+> (Claude Desktop, Cursor, Cline, Continue). Plus read-only
+> resources for `CLAUDE.md`, the architecture docs, and every
+> skill.
 
 `mcp/server.mjs` is a [Model Context Protocol](https://modelcontextprotocol.io)
 server speaking stdio. It lets Claude Desktop, Cursor, Cline,
@@ -74,12 +81,12 @@ capabilities.
 <CardGrid>
   <LinkCard
     title="Working with agents"
-    href="/ai/agents/"
+    href={withBase('/ai/agents/')}
     description="The CLAUDE.md / AGENTS.md orientation file and how to brief coding agents on the repo."
   />
   <LinkCard
     title="Skills"
-    href="/ai/skills/"
+    href={withBase('/ai/skills/')}
     description="Canonical Wun task templates under skills/ — wire-an-intent, add-screen-with-form, ship-a-breaking-change."
   />
 </CardGrid>

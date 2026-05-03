@@ -5,6 +5,11 @@ description: How Wun keeps state on the server and ships structure to clients.
 
 import { Aside } from '@astrojs/starlight/components';
 
+> **TL;DR.** The server runs the UI loop. It owns state, the
+> component vocabulary, and every intent's morph. Clients mirror
+> the rendered tree, render it natively, and dispatch user actions
+> back as data — never closures, never callbacks.
+
 In Wun, the **server is the source of truth** for application state.
 Clients are thin: they receive a tree of UI structure, render it
 natively, and dispatch user actions back as data-shaped intents.
@@ -69,7 +74,8 @@ authoritative server tree on the next confirmed envelope.
 <Aside type="tip" title="Pure morphs only">
   The same `:morph` runs twice (server + client). Side effects
   double-fire. Keep the morph pure; do `:fetch` on the server, dispatch
-  follow-up intents from the result. See [Intents](/concepts/intents/).
+  follow-up intents from the result. See [Intents](/concepts/intents/) for
+  the full pattern.
 </Aside>
 
 ## Why this works
@@ -88,7 +94,7 @@ authoritative server tree on the next confirmed envelope.
 
 ## Reference
 
-- [Components](../concepts/components/)
-- [Screens](../concepts/screens/)
-- [Intents](../concepts/intents/)
-- [Wire format](../concepts/wire-format/)
+- [Components](/concepts/components/)
+- [Screens](/concepts/screens/)
+- [Intents](/concepts/intents/)
+- [Wire format](/concepts/wire-format/)

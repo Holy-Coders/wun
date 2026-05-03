@@ -3,6 +3,11 @@ title: Path configuration
 description: Hotwire-Native-style :present hint on screens.
 ---
 
+> **TL;DR.** Add `:present :modal` to a `defscreen` and that
+> screen renders as a SwiftUI sheet on iOS / a Compose `Dialog` on
+> Android. Modeled after Hotwire Native's `path-configuration.json`
+> — but the decision lives next to the rest of the screen spec.
+
 `defscreen :present` declares whether navigation to this screen
 should `:push` (default) or open as `:modal`. Native clients honour
 the hint:
@@ -51,3 +56,11 @@ of the screen's metadata (`:path`, `:render`, `:meta`).
 
 This mirrors Hotwire Native's `path-configuration.json`, which lets
 the native shell decide modal-vs-push per URL pattern.
+
+## Read next
+
+- [Screens](/concepts/screens/) — the rest of the `defscreen` API.
+- [Head & hot-cache](/architecture/head-and-cache/) — `:meta` as
+  the cross-platform `<head>`.
+- [Wire format](/concepts/wire-format/) — `:screen-stack` and
+  `:presentations` arrays on each envelope.
