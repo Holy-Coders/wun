@@ -11,8 +11,11 @@
 import Foundation
 
 public enum Wun {
-    public static let version = "0.1.0-phase2f"
-    public static let supportedOps: Set<PatchOp> = [.replace, .insert, .remove]
+    public static let version = "0.1.0-phase6"
+    /// Wire envelope versions this build can decode. The SSE handshake
+    /// negotiates against this set via `?envelope=` query param.
+    public static let supportedEnvelopeVersions: Set<Int> = [1, 2]
+    public static let supportedOps: Set<PatchOp> = [.replace, .insert, .remove, .children]
 
     /// Called by Button/Input/etc. when an intent is fired in the UI.
     /// Set this from your host app at startup. Defaults to a no-op

@@ -23,19 +23,26 @@ public final class IntentDispatcher: @unchecked Sendable {
     /// or any other source of truth.
     public typealias ConnIDProvider = @Sendable () -> String?
 
+    /// Closure that returns the current CSRF token issued in the
+    /// connect envelope, or nil if the server isn't enforcing CSRF.
+    public typealias CSRFProvider   = @Sendable () -> String?
+
     private let baseURL: URL
     private let session: URLSession
     private let onError: OnError
     private let connIDProvider: ConnIDProvider
+    private let csrfProvider:  CSRFProvider
 
     public init(baseURL: URL,
                 session: URLSession = .shared,
                 onError: @escaping OnError = { _, _, _ in },
-                connIDProvider: @escaping ConnIDProvider = { nil }) {
+                connIDProvider: @escaping ConnIDProvider = { nil },
+                csrfProvider:   @escaping CSRFProvider   = { nil }) {
         self.baseURL = baseURL
         self.session = session
         self.onError = onError
         self.connIDProvider = connIDProvider
+        self.csrfProvider   = csrfProvider
     }
 
     /// Fire `intent` with `params`. Returns the generated intent id;
@@ -55,12 +62,19 @@ public final class IntentDispatcher: @unchecked Sendable {
         if let cid = connIDProvider() {
             fields["conn-id"] = .string(cid)
         }
+        let csrf = csrfProvider()
+        if let csrf {
+            fields["csrf-token"] = .string(csrf)
+        }
         let body: JSON = .object(fields)
 
         var request = URLRequest(url: baseURL.appendingPathComponent("intent"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let csrf {
+            request.setValue(csrf, forHTTPHeaderField: "X-Wun-CSRF")
+        }
         do {
             request.httpBody = try JSONEncoder().encode(body)
         } catch {

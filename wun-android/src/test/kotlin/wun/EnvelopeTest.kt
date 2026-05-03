@@ -62,4 +62,26 @@ class EnvelopeTest {
         val node = WunNode.fromJson(raw)
         assertEquals(raw, node.toJson())
     }
+
+    // ----- Wire v2 fields ---------------------------------------------------
+
+    @Test fun decodesEnvelopeVersionAndCsrfAndThemeAndResync() {
+        val frame = """
+            {
+              "patches": [],
+              "status": "ok",
+              "envelope-version": 2,
+              "csrf-token": "tok-X",
+              "resync?": true,
+              "theme": {"wun.color/primary": "#0a66c2", "wun.spacing/md": 16}
+            }
+        """.trimIndent()
+        val env = Envelope.decode(frame)
+        assertEquals(2, env.envelopeVersion)
+        assertEquals("tok-X", env.csrfToken)
+        assertEquals(true, env.resync)
+        val theme = env.theme as JsonObject
+        assertEquals("#0a66c2", theme["wun.color/primary"]!!.jsonPrimitive.content)
+        assertEquals(16, theme["wun.spacing/md"]!!.jsonPrimitive.int)
+    }
 }
