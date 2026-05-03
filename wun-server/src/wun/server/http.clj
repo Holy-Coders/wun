@@ -45,8 +45,8 @@
 ;; ---------------------------------------------------------------------------
 ;; Tree + broadcast
 
-(defn- current-tree-for [screen-key]
-  (screens/render screen-key @state/app-state))
+(defn- current-tree-for [conn-id screen-key]
+  (screens/render screen-key (state/state-for conn-id)))
 
 (defn- web-frame-src
   "Build a relative URL the iOS / Android client can navigate to in a
@@ -69,11 +69,13 @@
    to resolve, or `extra-keys` (e.g. screen-stack/conn-id changes the
    client needs even when the rendered tree is unchanged).
 
-   Substitution + encoding happen per-channel: different clients may
-   advertise different caps and request different wire formats.
+   Each channel renders against its own per-connection state slice
+   (`state/state-for ch's conn-id`); there is no global state to read
+   from. Substitution + encoding happen per-channel: different clients
+   may advertise different caps and request different wire formats.
    Updates the stored prior + prior-meta on successful enqueue. On
-   offer! failure, evicts the connection iff its channel has
-   actually closed (so transient buffer-full conditions don't drop
+   offer! failure, evicts the connection iff its channel has actually
+   closed (so transient buffer-full conditions don't drop
    slow-but-alive clients).
 
    Meta (page title, description, theme-color, etc.) is computed
@@ -82,20 +84,22 @@
    noise for an unchanged title."
   ([ch resolves-intent] (broadcast-to-channel! ch resolves-intent nil))
   ([ch resolves-intent extra-keys]
-   (let [screen-key  (state/screen-key ch)
-         raw         (current-tree-for screen-key)
+   (let [conn-id     (state/conn-id ch)
+         conn-state  (state/state-for conn-id)
+         screen-key  (state/screen-key ch)
+         raw         (current-tree-for conn-id screen-key)
          caps        (state/caps ch)
          fmt         (state/fmt ch)
          tree        (capabilities/substitute raw caps web-frame-src)
          prior       (state/prior-tree ch)
          patches     (diff/diff prior tree)
-         meta        (screens/render-meta screen-key @state/app-state)
+         meta        (screens/render-meta screen-key conn-state)
          prior-meta  (state/prior-meta ch)
          meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})]
      (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra)
        (let [env  (wire/patch-envelope patches
                                        (merge {:resolves-intent resolves-intent
-                                               :state           @state/app-state}
+                                               :state           conn-state}
                                               meta-extra
                                               extra-keys))
              data (wire/encode-envelope fmt env)]
@@ -109,9 +113,26 @@
                (log/debugf "wun: evicted closed connection (%d remain)"
                            (state/connection-count)))))))))
 
+(defn broadcast-to-conn!
+  "Find every SSE channel registered under `conn-id` and re-broadcast
+   to it. Used by the durable-state hook (myapp.server.persist) to
+   push DB-driven updates to the originating connection without going
+   through the intent path. Returns the number of channels notified."
+  ([conn-id] (broadcast-to-conn! conn-id nil))
+  ([conn-id resolves-intent]
+   (let [chs (keep (fn [[ch v]]
+                     (when (= conn-id (:conn-id v)) ch))
+                   @state/connections)]
+     (doseq [ch chs]
+       (broadcast-to-channel! ch resolves-intent))
+     (count chs))))
+
 (defn broadcast!
   "Diff against every connection's prior tree and enqueue per-channel
-   patch envelopes."
+   patch envelopes. Each channel reads its own per-conn state slice;
+   no fan-out happens at the framework level. Mostly useful as a
+   manual nudge after registering new screens / intents at the REPL,
+   or after applying a delta yourself across `state/conn-states`."
   ([] (broadcast! nil))
   ([resolves-intent]
    (doseq [ch (keys @state/connections)]
@@ -313,8 +334,14 @@
           (when id (state/cache-intent! id body))
           (response fmt 400 body))
         (do
-          (swap! state/app-state intents/apply-intent intent params)
-          (broadcast! id)
+          ;; Per-connection: the morph runs against the originating
+          ;; conn's state slice and the resulting patch ships only to
+          ;; that conn. Cross-conn fan-out (chat rooms, leaderboards)
+          ;; is an app-level concern -- write an intent that walks
+          ;; `state/conn-states` itself. The framework deliberately
+          ;; doesn't have a "broadcast to everyone" affordance.
+          (state/swap-state-for! conn-id intents/apply-intent intent params)
+          (broadcast-to-conn! conn-id id)
           (let [body {:status :ok :resolves-intent id}]
             (when id (state/cache-intent! id body))
             (response fmt 200 body)))))))

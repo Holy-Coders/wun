@@ -1227,7 +1227,9 @@
           ;; populate the registries).
           require-additions
           (str/join "\n            "
-                    (concat (when db? [dbns notes-store notesn])
+                    (concat (when db? [dbns notes-store notesn
+                                       (str slug ".persist")])
+                            (when (= db :postgres) [(str slug ".server.bus")])
                             (when (and db? auth?) [authns authui])
                             ;; aliased require must be a vector form
                             ["[wun.server.state :as wun-state]"]))
@@ -1238,18 +1240,24 @@
                     (str "wun.foundation.components\n            "
                          require-additions))
                    text)
-          ;; Step 2: insert (db/init!), preload notes, and (auth/init!)
-          ;; before (http/start! ...). The preload swap lets the demo
-          ;; screen render a populated list on first SSE connect; the
-          ;; add-note morph re-folds notes from DB on every subsequent
-          ;; write so the state stays in sync with the row table.
+          ;; Step 2: insert (db/init!), the per-conn init-state-fn that
+          ;; preloads :notes (and hydrates from the persist layer when
+          ;; a slice resumes), and (auth/init!) before (http/start! ...).
+          ;; The init-state-fn fires once per fresh conn slice; the
+          ;; add-note morph re-folds :notes from DB on every subsequent
+          ;; write so the slice stays in sync with the row table.
           init-block
           (str (when db?
                  (str "(" dbns "/init!)\n  "
-                      "(swap! wun-state/app-state assoc :notes "
-                      "(" notes-store "/list-notes))\n  "))
+                      "(myapp.persist/init!)\n  "
+                      "(wun-state/register-init-state-fn!\n   "
+                      "(fn [conn-id]\n     "
+                      "(merge {:notes (" notes-store "/list-notes)}\n            "
+                      "(myapp.persist/load-state conn-id))))\n  "))
                (when (and db? auth?)
-                 (str "(" authns "/init!)\n  ")))
+                 (str "(" authns "/init!)\n  "))
+               (when (= db :postgres)
+                 (str "(myapp.server.bus/start!)\n  ")))
           text   (if (and db?
                           (not (str/includes? text (str "(" dbns "/init!)"))))
                    (str/replace-first
