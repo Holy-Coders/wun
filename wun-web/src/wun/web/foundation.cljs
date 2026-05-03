@@ -256,4 +256,4 @@
                  [:progress
                   {:max (or (:size u) 0)
                    :value (or (:received u) 0)
-                   :style {:flex 1}}])]))))
+                   :style {:flex 1}}])])))))
