@@ -8,11 +8,11 @@
    token survives a page refresh. SSE connection-level auth is NOT
    wired up here -- the SSE stream is open to anyone today; intents
    that mutate user-owned data check `(:session state)` themselves."
-  (:require [wun.intents :refer [definent]]
+  (:require [wun.intents :refer [defintent]]
             [wun.screens :refer [defscreen]]
             #?(:clj [myapp.server.auth :as auth])))
 
-(definent :myapp/sign-up
+(defintent :myapp/sign-up
   {:server-only? true
    :params       [:map [:email [:string {:min 3}]]
                        [:password [:string {:min 8}]]]
@@ -28,7 +28,7 @@
         :cljs
         state))})
 
-(definent :myapp/log-in
+(defintent :myapp/log-in
   {:server-only? true
    :params       [:map [:email :string] [:password :string]]
    :morph
@@ -41,7 +41,7 @@
         :cljs
         state))})
 
-(definent :myapp/log-out
+(defintent :myapp/log-out
   {:server-only? true
    :params       [:map]
    :morph

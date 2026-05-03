@@ -932,7 +932,7 @@
     (step "adding intent " (c :bold keyword))
     (write-once!
      path
-     (format "(ns %s.%s-intent\n  (:require [wun.intents :refer [definent]]))\n\n(definent %s\n  {:params [:map]\n   :morph  (fn [state _params] state)})\n"
+     (format "(ns %s.%s-intent\n  (:require [wun.intents :refer [defintent]]))\n\n(defintent %s\n  {:params [:map]\n   :morph  (fn [state _params] state)})\n"
              ns name keyword))
     (println)
     (ok "next steps:")
@@ -1223,7 +1223,7 @@
           ;; both the server-only `*.server.db`/`*.server.notes-store`
           ;; namespaces (need to be loaded server-side) and the
           ;; cross-platform `*.notes`/`*.auth` namespaces (whose
-          ;; side-effecting `definent`/`defscreen` registrations
+          ;; side-effecting `defintent`/`defscreen` registrations
           ;; populate the registries).
           require-additions
           (str/join "\n            "

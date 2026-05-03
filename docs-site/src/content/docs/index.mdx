@@ -44,7 +44,7 @@ no platform-specific schema.
 
 <Aside type="tip" title="Read this in 60 seconds">
 **Wun moves the UI loop to the server**. You write three macros —
-`defcomponent` (a UI primitive), `defscreen` (a route), `definent`
+`defcomponent` (a UI primitive), `defscreen` (a route), `defintent`
 (a state mutation) — once, in `.cljc`. The server renders to a tree
 of namespaced keywords; web/iOS/Android each bind those keywords to
 their native widget. Anything a client can't render falls back to a
@@ -53,7 +53,7 @@ sandboxed WebView frame at the smallest containing subtree.
 
 ## The whole authoring surface fits in one screen
 
-Three macros — `defcomponent`, `defscreen`, `definent`. Framework
+Three macros — `defcomponent`, `defscreen`, `defintent`. Framework
 primitives use the exact same APIs as your application code. There
 is no privileged path.
 
@@ -79,18 +79,18 @@ is no privileged path.
 ```
 
   </TabItem>
-  <TabItem label="definent">
+  <TabItem label="defintent">
 
 ```clojure
 ;; An intent is a Malli-typed action with a *pure* morph.
 ;; Same fn runs server-side (authoritative) and client-side
 ;; (optimistic prediction). Reconcile via UUID.
-(definent :counter/inc
+(defintent :counter/inc
   {:params [:map]
    :morph  (fn [state _]
              (update state :n (fnil inc 0)))})
 
-(definent :counter/by
+(defintent :counter/by
   {:params [:map [:n :int]]
    :morph  (fn [state {:keys [n]}]
              (update state :n (fnil + 0) n))})
@@ -130,7 +130,7 @@ is no privileged path.
 
 <div class="wun-features">
   <Feature title="Three macros, total" href="/concepts/components/" icon="tile">
-    `defcomponent`, `defscreen`, `definent` are the entire authoring
+    `defcomponent`, `defscreen`, `defintent` are the entire authoring
     surface. Framework primitives use the same APIs as your code —
     `:wun/Stack` and `:myapp/Card` are indistinguishable to the runtime.
   </Feature>

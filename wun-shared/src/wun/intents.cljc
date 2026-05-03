@@ -21,7 +21,7 @@
 
 (defonce registry (atom {}))
 
-(defn definent [k spec]
+(defn defintent [k spec]
   (swap! registry assoc k spec)
   k)
 

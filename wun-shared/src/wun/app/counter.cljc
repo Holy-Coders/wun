@@ -2,7 +2,7 @@
   "The phase-0 counter app, expressed in user-namespace code that flows
    through the same registries the framework uses. Demonstrates that
    there is no privileged path between `:wun/*` and `:counter/*`."
-  (:require [wun.intents :refer [definent]]
+  (:require [wun.intents :refer [defintent]]
             [wun.screens :refer [defscreen]]))
 
 ;; ---------------------------------------------------------------------------
@@ -11,19 +11,19 @@
 ;; latter for optimistic prediction). `:params` is a Malli schema; the
 ;; framework rejects malformed payloads at both ends of the wire.
 
-(definent :counter/inc
+(defintent :counter/inc
   {:params [:map]
    :morph  (fn [state _params] (update state :counter (fnil inc 0)))})
 
-(definent :counter/dec
+(defintent :counter/dec
   {:params [:map]
    :morph  (fn [state _params] (update state :counter (fnil dec 0)))})
 
-(definent :counter/reset
+(defintent :counter/reset
   {:params [:map]
    :morph  (fn [_state _params] {:counter 0})})
 
-(definent :counter/by
+(defintent :counter/by
   {:params [:map [:n :int]]
    :morph  (fn [state {:keys [n]}] (update state :counter (fnil + 0) n))})
 

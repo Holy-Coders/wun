@@ -53,7 +53,7 @@ side-effecting macros:
   optional `:meta` (state → page metadata), optional `:present`
   (`:push` or `:modal`).
 
-- **`definent`** in `wun-shared/src/wun/intents.cljc`
+- **`defintent`** in `wun-shared/src/wun/intents.cljc`
   — registers an intent keyword with a Malli `:params` schema and a
   `:morph` fn `(state, params) → state` that runs identically on
   server and client.

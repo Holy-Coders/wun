@@ -14,15 +14,15 @@ An intent is a discrete state mutation: "increment counter",
 intents flow client → server, the server applies a pure morph,
 clients reconcile via UUID.
 
-## definent
+## defintent
 
 ```clojure
-(definent :counter/inc
+(defintent :counter/inc
   {:params [:map]
    :morph  (fn [state _params]
              (update state :counter (fnil inc 0)))})
 
-(definent :counter/by
+(defintent :counter/by
   {:params [:map [:n :int]]
    :morph  (fn [state {:keys [n]}]
              (update state :counter (fnil + 0) n))})
@@ -85,7 +85,7 @@ server already processed is idempotent.
 ## Framework intents
 
 The framework reserves a handful of intent keywords for built-in
-operations. They're registered through the same `definent` API as
+operations. They're registered through the same `defintent` API as
 your code; user intents and framework intents are indistinguishable
 to the runtime.
 
