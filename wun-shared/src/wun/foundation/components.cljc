@@ -215,3 +215,14 @@
    :fallback :web
    :ios      "WunFileInput"
    :android  "WunFileInput"})
+
+;; --- Phase 7: error boundary -----------------------------------------------
+
+(defcomponent :wun/ErrorBoundary
+  {:since    1
+   :schema   [:map
+              [:reason :string]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunErrorBoundary"
+   :android  "WunErrorBoundary"})

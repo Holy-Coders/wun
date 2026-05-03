@@ -34,6 +34,7 @@
             [io.pedestal.interceptor :as interceptor]
             [wun.capabilities      :as capabilities]
             [wun.diff              :as diff]
+            [wun.errors            :as errors]
             [wun.intents           :as intents]
             [wun.screens           :as screens]
             [wun.theme             :as theme]
@@ -57,7 +58,18 @@
 ;; Tree + broadcast
 
 (defn- current-tree-for [conn-id screen-key]
-  (screens/render screen-key (state/state-for conn-id)))
+  (let [{render-fn :render} (screens/lookup screen-key)
+        st (state/state-for conn-id)]
+    (if render-fn
+      (errors/safe-render render-fn st
+                          (fn [t]
+                            (telemetry/emit! :wun/intent.rejected
+                                             {:conn-id conn-id
+                                              :screen  screen-key
+                                              :reason  :render-error
+                                              :error   (errors/format-error t)})))
+      ;; No registered screen: emit an error tree explicitly.
+      (errors/error-tree (ex-info "no such screen" {:screen screen-key})))))
 
 (defn- web-frame-src
   "Build a relative URL the iOS / Android client can navigate to in a

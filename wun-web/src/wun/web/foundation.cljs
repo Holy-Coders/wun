@@ -138,6 +138,21 @@
 ;; rendering; on web today it's a styled placeholder since web is the
 ;; one platform that can render everything in the vocabulary anyway.
 
+(r/register! :wun/ErrorBoundary
+  (fn [{:keys [reason]} _children]
+    [:div.wun-error
+     {:role "alert"
+      :style {:padding         "12px 16px"
+              :border          "1px solid #f0a"
+              :border-radius   "6px"
+              :background      "#fff5f8"
+              :color           "#9b1c1c"
+              :font            "13px ui-monospace, monospace"
+              :white-space     "pre-wrap"}}
+     [:strong {:style {:display "block" :margin-bottom "4px"}}
+      "Render error"]
+     reason]))
+
 (r/register! :wun/WebFrame
   (fn [{:keys [src missing reason]} _children]
     [:div.wun-webframe
