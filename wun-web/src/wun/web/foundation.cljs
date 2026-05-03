@@ -53,20 +53,17 @@
 
 (r/register! :wun/Divider
   (fn [{:keys [thickness]} _children]
+    ;; Color, structural border, and margin live in wun.web.styles.
+    ;; Per-instance `:thickness` still wins via inline override.
     [:hr.wun-divider
-     {:style {:border           "0"
-              :border-top-width (str (or thickness 1) "px")
-              :border-top-style "solid"
-              :border-top-color "rgba(0,0,0,0.12)"
-              :margin           "8px 0"}}]))
+     (cond-> {}
+       thickness (assoc :style {:border-top-width (str thickness "px")}))]))
 
 (r/register! :wun/Link
   (fn [{:keys [href on-press]} children]
+    ;; Color / text-decoration / border-bottom live in wun.web.styles.
     (into [:a.wun-link
-           (cond-> {:href  (or href "#")
-                    :style {:color           "#0a66c2"
-                            :text-decoration "none"
-                            :border-bottom   "1px dotted currentColor"}}
+           (cond-> {:href (or href "#")}
              on-press (assoc :on
                              {:click (fn [ev]
                                        (.preventDefault ev)
@@ -111,8 +108,9 @@
 
 (r/register! :wun/Heading
   (fn [{:keys [level]} children]
+    ;; Margin + color live in wun.web.styles via the .wun-heading rule.
     (let [tag (case level 1 :h1 2 :h2 3 :h3 4 :h4 :h2)]
-      (into [tag {:class "wun-heading" :style {:margin "0"}}] children))))
+      (into [tag {:class "wun-heading"}] children))))
 
 ;; :wun/Input -- text input bound through an intent. Two-way data flow
 ;; uses optimistic morphs: the on-input handler dispatches a value-change
@@ -175,14 +173,12 @@
 
 (r/register! :wun/Skeleton
   (fn [{:keys [width height]} _children]
+    ;; Background gradient + shimmer animation live in wun.web.styles.
+    ;; Per-instance width/height stays inline so callers can size each
+    ;; skeleton block to the content it stands in for.
     [:div.wun-skeleton
-     {:style {:display       "inline-block"
-              :width         (or width "100%")
-              :height        (or height "12px")
-              :border-radius "4px"
-              :background    "linear-gradient(90deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.06) 100%)"
-              :background-size "200% 100%"
-              :animation     "wun-skeleton 1.4s ease-in-out infinite"}}]))
+     {:style {:width  (or width "100%")
+              :height (or height "12px")}}]))
 
 ;; --- Phase 4: form / field / file-input renderers --------------------------
 
