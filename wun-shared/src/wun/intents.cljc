@@ -7,9 +7,15 @@
    sites' possible -- producer and consumer cannot drift.
 
    Spec keys per the brief: `:params`, `:morph`, `:loading`,
-   `:on-error`, `:optimistic?`, `:authorize`, `:persist`. Phase 1.C/D
-   honours `:params` (schema) and `:morph`; the rest land in later
-   slices. `:authorize` and `:persist` are server-only by definition."
+   `:on-error`, `:optimistic?`, `:server-only?`, `:authorize`,
+   `:persist`. Phase 1.C/D honours `:params` (schema), `:morph`, and
+   `:server-only?`; the rest land in later slices. `:authorize` and
+   `:persist` are server-only by definition.
+
+   `:server-only?` true marks an intent whose morph cannot meaningfully
+   run on the client (e.g. password verification reads the users table).
+   The web client's optimistic predictor skips these; the intent still
+   POSTs and the server's authoritative state ships back over SSE."
   (:require [malli.core  :as m]
             [malli.error :as me]))
 
@@ -20,6 +26,13 @@
   k)
 
 (defn lookup [k] (get @registry k))
+
+(defn server-only?
+  "True when intent `k` is registered with `:server-only? true`. The
+   client uses this to skip the optimistic morph; the server always
+   runs the morph regardless."
+  [k]
+  (boolean (:server-only? (lookup k))))
 
 ;; ---------------------------------------------------------------------------
 ;; Param validation

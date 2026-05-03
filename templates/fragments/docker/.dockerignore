@@ -1,0 +1,16 @@
+.git/
+.gitignore
+.dockerignore
+.idea/
+.vscode/
+.shadow-cljs/
+.cpcache/
+node_modules/
+target/
+public/js/
+data/
+ios/
+android/
+.deps.edn.linkbak
+README.md
+*.log

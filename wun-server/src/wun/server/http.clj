@@ -403,7 +403,7 @@
 ;; it) ends up back here with no :response set and `looks-like-route?`
 ;; would happily serve index.html instead of the real 410.
 (def ^:private server-handled-prefixes
-  ["/wun" "/intent" "/web-frames"])
+  ["/wun" "/intent" "/web-frames" "/healthz"])
 
 (defn- server-handled? [^String uri]
   (some #(.startsWith uri ^String %) server-handled-prefixes))
@@ -453,12 +453,25 @@
 ;; ---------------------------------------------------------------------------
 ;; Routes
 
+;; Liveness probe for container orchestrators (Docker healthcheck, fly.io
+;; checks, k8s readiness/liveness). Fixed JSON body, no state -- a 200
+;; here means the JVM is up and Pedestal is routing. App-level health
+;; (DB connectivity, etc.) belongs in a separate /readyz the user adds.
+(def ^:private healthz-handler
+  {:name  ::healthz
+   :enter (fn [ctx]
+            (assoc ctx :response
+                   {:status  200
+                    :headers {"Content-Type" "application/json"}
+                    :body    "{\"status\":\"ok\"}"}))})
+
 (def routes
   (route/expand-routes
    #{["/wun"    :get  (sse/start-event-stream on-stream-ready)
       :route-name :wun-stream]
      ["/intent" :post [(body-params/body-params) intent-handler]
       :route-name :wun-intent]
+     ["/healthz" :get  healthz-handler  :route-name :wun-healthz]
      ["/web-frames/:key"        :get web-frame-handler :route-name :wun-web-frame]
      ["/web-frames/:key/:token" :get web-frame-handler :route-name :wun-web-frame-token]}))
 
@@ -533,14 +546,20 @@
     (.cancel ^java.util.concurrent.ScheduledFuture h false)
     (reset! gc-handle nil)))
 
+(defn- env-port []
+  (when-let [s (System/getenv "PORT")]
+    (try (Integer/parseInt s) (catch NumberFormatException _ nil))))
+
 (defn start!
   ([] (start! {}))
-  ([{:keys [static gc-interval-secs] :or {gc-interval-secs 30} :as opts}]
+  ([{:keys [static gc-interval-secs port host] :or {gc-interval-secs 30} :as opts}]
    (let [resolved-static (existing-dir
                           (or static
                               (System/getenv "WUN_STATIC")
                               "../wun-web/public"))
-         sm  (service-map opts)
+         resolved-port   (or port (env-port) 8080)
+         resolved-host   (or host (System/getenv "HOST") "0.0.0.0")
+         sm  (service-map (assoc opts :port resolved-port :host resolved-host))
          sm  (-> sm
                  http/default-interceptors
                  (cond-> resolved-static
@@ -548,6 +567,7 @@
                                  #(conj (vec %) (static-interceptor resolved-static)))))]
      (when resolved-static
        (println (str "  serving static files from " (.getPath resolved-static))))
+     (println (str "  listening on " resolved-host ":" resolved-port))
      (start-gc! gc-interval-secs)
      (-> sm http/create-server http/start))))
 

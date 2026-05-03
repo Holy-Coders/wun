@@ -35,3 +35,5 @@ longer than ~10 steps, it should be split.
 | `wire-an-intent.md`                | shipping a new intent end-to-end                  |
 | `add-component-pack.md`            | building a reusable `:myapp/*` library            |
 | `ship-a-breaking-change.md`        | landing a change that needs a migration script    |
+| `add-a-database-feature.md`        | adding a DB-backed screen + intent + store        |
+| `deploy-with-docker.md`            | shipping a Wun app to docker / fly.io / k8s       |
