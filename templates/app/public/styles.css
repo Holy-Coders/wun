@@ -1,0 +1,112 @@
+/* App stylesheet. Theme tokens are derived from the primary color
+ * the CLI prompted you for at scaffold time; the literal hex below
+ * was substituted in by `wun new app`. Edit anything you like — the
+ * scaffold doesn't re-touch this file. The `:wun/*` foundation
+ * renderers consume some of these tokens via inline classes
+ * (`.wun-stack`, `.wun-button`, `.wun-text--*`); your own
+ * `:myapp/*` renderers should reach for the same vars so the theme
+ * stays consistent. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Primary + derived shades. */
+  --wun-primary:        WUN_THEME_PRIMARY;
+  --wun-primary-soft:   color-mix(in srgb, WUN_THEME_PRIMARY 14%, transparent);
+  --wun-primary-strong: color-mix(in srgb, WUN_THEME_PRIMARY 80%, black 20%);
+
+  /* Neutrals + semantic tones. */
+  --wun-text:           #0a1020;
+  --wun-text-muted:     rgba(10, 16, 32, 0.65);
+  --wun-bg:             #ffffff;
+  --wun-bg-soft:        #f6f7fb;
+  --wun-border:         rgba(10, 16, 32, 0.12);
+  --wun-success:        #16a34a;
+  --wun-warning:        #b45309;
+  --wun-danger:         #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --wun-text:       #e6eaf2;
+    --wun-text-muted: rgba(230, 234, 242, 0.7);
+    --wun-bg:         #0c1220;
+    --wun-bg-soft:    #131b2e;
+    --wun-border:     rgba(230, 234, 242, 0.14);
+  }
+}
+
+/* Page chrome. */
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, sans-serif;
+  background: var(--wun-bg);
+  color:      var(--wun-text);
+}
+body {
+  padding:    32px;
+  max-width:  840px;
+  margin:     0 auto;
+}
+
+/* Foundation renderers — keep selectors in sync with wun-web/foundation.cljs. */
+
+.wun-stack {
+  display:        flex;
+  flex-direction: column;
+  gap:            inherit;
+}
+.wun-stack[data-direction="row"] {
+  flex-direction: row;
+  align-items:    center;
+}
+
+.wun-button {
+  font:           inherit;
+  padding:        6px 14px;
+  border-radius:  6px;
+  border:         1px solid var(--wun-primary);
+  color:          var(--wun-primary);
+  background:     transparent;
+  cursor:         pointer;
+  transition:     background 120ms ease, color 120ms ease;
+}
+.wun-button:hover {
+  background:     var(--wun-primary-soft);
+}
+.wun-button:active {
+  background:     var(--wun-primary);
+  color:          var(--wun-bg);
+}
+
+.wun-text--h1   { font-size: 32px; font-weight: 600; margin: 0; color: var(--wun-text); }
+.wun-text--h2   { font-size: 22px; font-weight: 600; margin: 0; color: var(--wun-text); }
+.wun-text--body { font-size: 15px; margin: 0;          color: var(--wun-text-muted); }
+
+.wun-link {
+  color:           var(--wun-primary);
+  text-decoration: none;
+  border-bottom:   1px dotted currentColor;
+}
+
+.wun-heading {
+  margin: 0;
+  color:  var(--wun-text);
+}
+
+.wun-input {
+  font:           inherit;
+  padding:        6px 10px;
+  border-radius:  6px;
+  border:         1px solid var(--wun-border);
+  background:     var(--wun-bg);
+  color:          var(--wun-text);
+}
+
+.wun-divider {
+  border:         0;
+  border-top:     1px solid var(--wun-border);
+  margin:         8px 0;
+}

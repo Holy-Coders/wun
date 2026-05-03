@@ -287,6 +287,42 @@
       (#{"y" "yes"} line) true
       :else false)))
 
+(defn- prompt-text!
+  "Read a free-text answer with a default. Empty input returns the default."
+  [question default]
+  (print (str question
+              (when default (str " [" default "]"))
+              " "))
+  (flush)
+  (let [line (some-> (read-line) str/trim)]
+    (if (str/blank? line) default line)))
+
+(defn- prompt-choice!
+  "Multiple-choice prompt. `choices` is a vector of strings; `default`
+   is the string in `choices` to use on empty input. Accepts either
+   the choice value or its 1-based index. Reprompts on invalid input."
+  [question choices default]
+  (println question)
+  (doseq [[i c] (map-indexed vector choices)]
+    (println (str "    " (inc i) ") " c (when (= c default) " (default)"))))
+  (loop []
+    (print "  > ")
+    (flush)
+    (let [line (some-> (read-line) str/trim)]
+      (cond
+        (str/blank? line)
+        default
+
+        (some #{line} choices)
+        line
+
+        :else
+        (let [n (try (Integer/parseInt line) (catch Throwable _ nil))]
+          (if (and n (<= 1 n (count choices)))
+            (nth choices (dec n))
+            (do (warn "  not a valid choice; type the option name or its number")
+                (recur))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; doctor
 
@@ -1038,46 +1074,131 @@
 ;;
 ;; Accepts (in any order):
 ;;   --link
-;;   --docker
-;;   --no-auth
+;;   --docker / --no-docker
+;;   --auth   / --no-auth
 ;;   --db {none|sqlite|postgres|datomic}
+;;   --theme {blue|indigo|green|orange|pink|slate|#hexhex}
+;;   --dashboard-dev / --no-dashboard-dev
+;;   --showcase     / --no-showcase
+;;   --non-interactive  (skip prompts even on a TTY; use defaults / flags)
 ;;
 ;; Anything else => exit 2 with usage. Defaults: db=none, docker=false,
-;; auth=true (only meaningful when db != none).
+;; auth=true, theme=blue, dashboard-dev=true, showcase=true.
+;;
+;; Behaviour: if no flags from {db, auth, docker, theme, dashboard-dev,
+;; showcase} are given AND we're attached to a TTY AND the user didn't
+;; pass --non-interactive, drop into the prompt-driven builder.
 
 (def ^:private db-values #{"none" "sqlite" "postgres" "datomic"})
 
-(defn- new-app-usage []
-  (str "usage: wun new app <name> "
-       "[--db none|sqlite|postgres|datomic] [--docker] [--no-auth] [--link]"))
+(def ^:private theme-palette
+  "Named themes the prompt offers. `:custom` is a placeholder that
+   triggers a follow-up free-text hex prompt. Hex strings ride
+   straight into the generated theme initialiser."
+  {"blue"   "#0a66c2"
+   "indigo" "#4f46e5"
+   "green"  "#16a34a"
+   "orange" "#ea580c"
+   "pink"   "#db2777"
+   "slate"  "#475569"})
 
+(defn- resolve-theme-color
+  "Turn a theme value (named palette key or literal hex) into the hex
+   string that lands in the generated app's theme init."
+  [v]
+  (or (get theme-palette v) v))
+
+(defn- new-app-usage []
+  (str "usage: wun new app [<name>]\n"
+       "         [--db none|sqlite|postgres|datomic]\n"
+       "         [--docker | --no-docker]\n"
+       "         [--auth   | --no-auth]\n"
+       "         [--theme blue|indigo|green|orange|pink|slate|#hex]\n"
+       "         [--dashboard-dev | --no-dashboard-dev]\n"
+       "         [--showcase | --no-showcase]\n"
+       "         [--non-interactive] [--link]\n"
+       "       (no flags + TTY → interactive builder)"))
+
+;; `:explicit?` tracks which keys the user set on the command line. If
+;; nothing was set explicitly *and* we're attached to a TTY, we drop
+;; into the interactive builder. The presence of any flag means the
+;; user is scripting and we leave the rest at their defaults.
 (defn- parse-new-app-args [args]
-  (loop [acc {:positional [] :link? false :docker? false
-              :auth? true   :db "none"}
+  (loop [acc {:positional      []
+              :link?           false
+              :docker?         false
+              :auth?           true
+              :db              "none"
+              :theme           "blue"
+              :dashboard-dev?  true
+              :showcase?       true
+              :non-interactive? false
+              :explicit?       #{}}
          xs  args]
     (if (empty? xs)
       acc
-      (let [a (first xs)]
+      (let [a    (first xs)
+            mark #(update %1 :explicit? conj %2)]
         (cond
-          (= a "--link")     (recur (assoc acc :link? true)    (rest xs))
-          (= a "--docker")   (recur (assoc acc :docker? true)  (rest xs))
-          (= a "--no-auth")  (recur (assoc acc :auth? false)   (rest xs))
-          (= a "--db")       (let [v (second xs)]
-                               (when-not (and v (db-values v))
-                                 (err "--db expects one of "
-                                      (str/join "|" (sort db-values)))
-                                 (System/exit 2))
-                               (recur (assoc acc :db v) (drop 2 xs)))
+          (= a "--link")
+          (recur (-> acc (assoc :link? true) (mark :link?)) (rest xs))
+
+          (= a "--docker")
+          (recur (-> acc (assoc :docker? true) (mark :docker?)) (rest xs))
+
+          (= a "--no-docker")
+          (recur (-> acc (assoc :docker? false) (mark :docker?)) (rest xs))
+
+          (= a "--auth")
+          (recur (-> acc (assoc :auth? true) (mark :auth?)) (rest xs))
+
+          (= a "--no-auth")
+          (recur (-> acc (assoc :auth? false) (mark :auth?)) (rest xs))
+
+          (= a "--dashboard-dev")
+          (recur (-> acc (assoc :dashboard-dev? true) (mark :dashboard-dev?)) (rest xs))
+
+          (= a "--no-dashboard-dev")
+          (recur (-> acc (assoc :dashboard-dev? false) (mark :dashboard-dev?)) (rest xs))
+
+          (= a "--showcase")
+          (recur (-> acc (assoc :showcase? true) (mark :showcase?)) (rest xs))
+
+          (= a "--no-showcase")
+          (recur (-> acc (assoc :showcase? false) (mark :showcase?)) (rest xs))
+
+          (= a "--non-interactive")
+          (recur (assoc acc :non-interactive? true) (rest xs))
+
+          (= a "--db")
+          (let [v (second xs)]
+            (when-not (and v (db-values v))
+              (err "--db expects one of " (str/join "|" (sort db-values)))
+              (System/exit 2))
+            (recur (-> acc (assoc :db v) (mark :db)) (drop 2 xs)))
+
           (str/starts-with? a "--db=")
           (let [v (subs a 5)]
             (when-not (db-values v)
               (err "--db expects one of " (str/join "|" (sort db-values)))
               (System/exit 2))
-            (recur (assoc acc :db v) (rest xs)))
+            (recur (-> acc (assoc :db v) (mark :db)) (rest xs)))
+
+          (= a "--theme")
+          (let [v (second xs)]
+            (when-not v
+              (err "--theme expects a value (named theme or hex color)")
+              (System/exit 2))
+            (recur (-> acc (assoc :theme v) (mark :theme)) (drop 2 xs)))
+
+          (str/starts-with? a "--theme=")
+          (recur (-> acc (assoc :theme (subs a 8)) (mark :theme)) (rest xs))
+
           (str/starts-with? a "--")
           (do (err "unknown flag: " a)
               (println "  " (new-app-usage))
               (System/exit 2))
+
           :else
           (recur (update acc :positional conj a) (rest xs)))))))
 
@@ -1273,6 +1394,71 @@
                    text)]
       (spit (str main-path) text))))
 
+(defn- patch-server-main-extras!
+  "Inject the dev-dashboard mount, the theme default, and the
+   showcase live-demo wiring into `server/main.clj`. Theme always
+   applies (passed through unconditionally). Dashboard install is
+   gated on `:dashboard-dev?` and runs only outside
+   `WUN_PROFILE=prod`. Showcase is gated on `:showcase?`. All edits
+   are idempotent — re-running is a no-op thanks to `str/includes?`
+   guards."
+  [main-path {:keys [dashboard-dev? theme showcase?]}]
+  (when (fs/exists? main-path)
+    (let [text          (slurp (str main-path))
+          want-theme?   (some? theme)
+          want-dash?    (boolean dashboard-dev?)
+          want-show?    (boolean showcase?)
+          extra-reqs    (cond-> []
+                          want-theme? (conj "wun.theme")
+                          want-dash?  (conj "wun.server.dashboard")
+                          want-show?  (conj "myapp.showcase"
+                                            "myapp.server.showcase"))
+          new-reqs      (->> extra-reqs
+                             (remove #(str/includes? text %))
+                             (str/join "\n            "))
+          text          (if (and (seq extra-reqs) (seq new-reqs))
+                          (str/replace-first
+                            text
+                            "wun.foundation.components"
+                            (str "wun.foundation.components\n            "
+                                 new-reqs))
+                          text)
+          theme-block   (when (and want-theme?
+                                   (not (str/includes? text "(wun.theme/set-default!")))
+                          (str "(wun.theme/set-default! "
+                               "{:wun.color/primary \"" theme "\"})\n  "))
+          dash-block    (when (and want-dash?
+                                   (not (str/includes? text "(wun.server.dashboard/install!)")))
+                          (str "(when-not (= \"prod\" (System/getenv \"WUN_PROFILE\"))\n    "
+                               "(wun.server.dashboard/install!))\n  "))
+          show-block    (when (and want-show?
+                                   (not (str/includes? text "(myapp.server.showcase/init!)")))
+                          (str "(myapp.server.showcase/init!)\n  "))
+          inject        (str (or theme-block "") (or dash-block "") (or show-block ""))
+          text          (if (and (seq inject) (str/includes? text "(http/start!"))
+                          (str/replace-first text "(http/start!" (str inject "(http/start!"))
+                          text)]
+      (spit (str main-path) text))))
+
+(defn- patch-web-main-extras!
+  "Add showcase requires to `web/main.cljs` so the cljc registries
+   load and the cljs-only `:myapp.showcase/RichEditor` web renderer
+   registers. Idempotent."
+  [main-path {:keys [showcase?]}]
+  (when (and showcase? (fs/exists? main-path))
+    (let [text     (slurp (str main-path))
+          adds     (->> ["myapp.showcase"
+                         "myapp.web.showcase-renderers"]
+                        (remove #(str/includes? text %)))
+          new-reqs (str/join "\n            " (map #(str "[" % "]") adds))
+          text     (if (seq adds)
+                     (str/replace-first
+                       text
+                       "[myapp.web.renderers]"
+                       (str "[myapp.web.renderers]\n            " new-reqs))
+                     text)]
+      (spit (str main-path) text))))
+
 (defn- patch-readme! [readme-path {:keys [db docker? auth?]}]
   (when (fs/exists? readme-path)
     (let [text   (slurp (str readme-path))
@@ -1341,10 +1527,110 @@
                   (str text "\n" marker "\n\n"
                        (str/join "\n" chunks)))))))))
 
+(defn- collect-options-interactively
+  "Prompt the user for the missing app options. Returns an updated
+   option map with `:positional`, `:db`, `:auth?`, `:docker?`,
+   `:theme`, `:dashboard-dev?`, `:showcase?` filled in. Any key
+   already in `:explicit?` is left at the value the user passed."
+  [opts]
+  (let [explicit?  (:explicit? opts)
+        was-set?   #(contains? explicit? %)
+        name       (or (first (:positional opts))
+                       (loop []
+                         (let [n (prompt-text! "App name?" nil)]
+                           (cond
+                             (str/blank? n)
+                             (do (warn "  app name is required") (recur))
+
+                             (re-matches #"[a-z][a-z0-9]*" n)
+                             n
+
+                             :else
+                             (do (warn "  must match [a-z][a-z0-9]* (no hyphens — Kotlin pkg)")
+                                 (recur))))))
+        db         (if (was-set? :db)
+                     (:db opts)
+                     (prompt-choice!
+                       "Database?"
+                       ["sqlite" "postgres" "datomic" "none"]
+                       "sqlite"))
+        ;; If auth wasn't explicitly set, default-on when there's a db
+        ;; and ask. With db=none, auth has nowhere to persist; offer
+        ;; the user a graceful fix rather than silently dropping it.
+        auth?      (if (was-set? :auth?)
+                     (:auth? opts)
+                     (prompt! "Include user accounts (signup / login / sessions)?" true))
+        [db auth?] (cond
+                     (and auth? (= db "none"))
+                     (let [switch? (prompt!
+                                     "  user accounts need a database; switch to sqlite?"
+                                     true)]
+                       (if switch? ["sqlite" true] [db false]))
+                     :else [db auth?])
+        docker?    (if (was-set? :docker?)
+                     (:docker?  opts)
+                     (prompt! "Add Dockerfile + docker-compose for production builds?" false))
+        theme-raw  (if (was-set? :theme)
+                     (:theme opts)
+                     (prompt-choice!
+                       "Theme primary color?"
+                       (conj (vec (keys theme-palette)) "custom")
+                       "blue"))
+        theme      (if (= theme-raw "custom")
+                     (loop []
+                       (let [hex (prompt-text! "  hex color (e.g. #6366f1)?" "#0a66c2")]
+                         (if (re-matches #"#[0-9a-fA-F]{6}" hex)
+                           hex
+                           (do (warn "  expected a 6-digit hex like #6366f1")
+                               (recur)))))
+                     theme-raw)
+        dash-dev?  (if (was-set? :dashboard-dev?)
+                     (:dashboard-dev? opts)
+                     (prompt! "Auto-mount the live dev dashboard at /_wun/dashboard in dev mode?" true))
+        showcase?  (if (was-set? :showcase?)
+                     (:showcase? opts)
+                     (prompt! "Include showcase pages (forms / pubsub / capability fallback)?" true))]
+    (assoc opts
+           :positional      [name]
+           :db              db
+           :auth?           auth?
+           :docker?         docker?
+           :theme           theme
+           :dashboard-dev?  dash-dev?
+           :showcase?       showcase?)))
+
+(defn- print-summary [{:keys [positional db auth? docker? theme dashboard-dev? showcase?]}]
+  (println)
+  (rule "─" 60)
+  (println "  app:           " (c :bold (first positional)))
+  (println "  database:      " db)
+  (println "  user accounts: " (if auth? "yes" "no"))
+  (println "  docker:        " (if docker? "yes" "no"))
+  (println "  theme:         " (resolve-theme-color theme)
+           (when (get theme-palette theme) (str "(" theme ")")))
+  (println "  dashboard dev: " (if dashboard-dev? "yes (auto-mount)" "no"))
+  (println "  showcase pages:" (if showcase? "yes" "no"))
+  (rule "─" 60)
+  (println))
+
 (defn- cmd-new-app [args]
-  (let [{:keys [positional link? docker? auth? db]} (parse-new-app-args args)
-        name (first positional)]
+  (let [parsed     (parse-new-app-args args)
+        ;; Interactive whenever (a) on a TTY, (b) not explicitly opted
+        ;; out, and (c) at least one of the major options wasn't passed
+        ;; on the CLI. A fully-flagged invocation stays scripted.
+        full-opts? (every? (:explicit? parsed)
+                           [:db :auth? :docker? :theme
+                            :dashboard-dev? :showcase?])
+        interactive? (and (tty?)
+                          (not (:non-interactive? parsed))
+                          (not full-opts?))
+        opts       (cond-> parsed
+                     interactive? collect-options-interactively)
+        {:keys [positional link? docker? auth? db
+                theme dashboard-dev? showcase?]} opts
+        name       (first positional)]
     (bail-if-bad-name! name "app")
+    (when interactive? (print-summary opts))
     (let [dst       (copy-template! "app" name)
           dst-s     (str dst)
           pascal    (pascalize name)
@@ -1374,26 +1660,61 @@
         (when (and db-key (has-frag? (str "docker-db/" db)))
           (overlay-fragment! (frag (str "docker-db/" db)) dst-s
                              (str "docker-db-" db))))
+      (when (and dashboard-dev? (has-frag? "dashboard-dev"))
+        (overlay-fragment! (frag "dashboard-dev") dst-s "dashboard-dev"))
+      (when (has-frag? "theme")
+        (overlay-fragment! (frag "theme") dst-s "theme"))
+      (when (and showcase? (has-frag? "showcase"))
+        (overlay-fragment! (frag "showcase") dst-s "showcase"))
       ;; Step 2: surgical patches into base files.
       (patch-deps-edn!     (str (fs/path dst "deps.edn"))
                            {:db (or db-key :none) :docker? docker? :auth? auth?})
       (when db-key
         (patch-server-main! (str (fs/path dst "src" "myapp" "server" "main.clj"))
                             "myapp" {:db db-key :auth? auth?}))
+      (patch-server-main-extras! (str (fs/path dst "src" "myapp" "server" "main.clj"))
+                                 {:dashboard-dev? dashboard-dev?
+                                  :theme          (resolve-theme-color theme)
+                                  :showcase?      showcase?})
+      (patch-web-main-extras!    (str (fs/path dst "src" "myapp" "web" "main.cljs"))
+                                 {:showcase? showcase?})
       (patch-readme!       (str (fs/path dst "README.md"))
                            {:db db :docker? docker? :auth? auth?})
       ;; Step 3: existing substitution sweep over the merged tree.
       (rewrite-tree! dst-s name pascal)
+      ;; Step 3b: theme-token substitution. Templates use the literal
+      ;; sentinel `WUN_THEME_PRIMARY` so they parse as valid Clojure
+      ;; without it (default-blue at template-author time).
+      (let [hex (resolve-theme-color theme)]
+        (doseq [p (fs/glob dst-s "**" {:hidden true})
+                :when (fs/regular-file? p)
+                :let  [content (slurp (str p))]
+                :when (str/includes? content "WUN_THEME_PRIMARY")]
+          (spit (str p) (str/replace content "WUN_THEME_PRIMARY" hex))))
       (when link?
         (println)
         (if (active-wun-root)
           (cmd-link-app dst-s)
           (warn "--link requested but no active editable Wun is registered;"
                 " run `wun link` inside a wun checkout first.")))
+      ;; Step 4: install JS deps so the user can `wun dev` immediately.
+      ;; Skip if npm isn't on PATH — print a hint instead. Run from the
+      ;; new app directory so package-lock lands there, not in the cwd.
+      (println)
+      (if-let [npm (which "npm")]
+        (do (step "npm install in " (c :bold name) " (this can take a minute)")
+            (let [{:keys [exit]} (p/sh [npm "install"]
+                                       {:dir dst-s :inherit true
+                                        :continue true})]
+              (if (zero? exit)
+                (ok "npm install complete")
+                (warn "npm install exited " exit " — re-run manually in " name))))
+        (warn "npm not on PATH; skip auto-install (the README has the manual steps)"))
       (println)
       (println "  next steps:")
       (println (str "    cd " name))
-      (println "    npm install                  # shadow-cljs needs node deps")
+      (when-not (which "npm")
+        (println "    npm install                  # shadow-cljs needs node deps"))
       (when (and db-key (= db "postgres") (not docker?))
         (println "    export DATABASE_URL=jdbc:postgresql://localhost:5432/" name
                  "?user=" name "&password=" name)
@@ -1407,6 +1728,10 @@
         (println "    open http://localhost:8081/notes")
         (when auth?
           (println "    open http://localhost:8081/signup")))
+      (when showcase?
+        (println "    open http://localhost:8081/showcase"))
+      (when dashboard-dev?
+        (println "    open http://localhost:8081/_wun/dashboard"))
       (println)
       (cond
         link?
