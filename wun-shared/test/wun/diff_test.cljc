@@ -65,3 +65,111 @@
              [:wun/Text {} "tres"]]
         patches (diff/diff old new)]
     (is (= new (diff/apply-patches old patches)))))
+
+;; ---------------------------------------------------------------------------
+;; Wire v2: key-aware children
+
+(deftest keyed-equal-trees-emit-no-patches
+  (let [t [:wun/Stack {}
+           [:wun/Text {:key "a"} "A"]
+           [:wun/Text {:key "b"} "B"]]]
+    (is (= [] (diff/diff t t)))))
+
+(deftest keyed-reorder-emits-children-op
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "b"} "B"]
+             [:wun/Text {:key "c"} "C"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "c"} "C"]
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "b"} "B"]]
+        patches (diff/diff old new)]
+    (is (= 1 (count patches)))
+    (let [p (first patches)]
+      (is (= :children (:op p)))
+      (is (= [] (:path p)))
+      (is (= [{:key "c" :existing? true}
+              {:key "a" :existing? true}
+              {:key "b" :existing? true}]
+             (:order p))))
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest keyed-insert-emits-inline-value
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "b"} "B"]]
+        patches (diff/diff old new)]
+    (is (= 1 (count patches)))
+    (let [p (first patches)]
+      (is (= :children (:op p)))
+      (is (= [{:key "a" :existing? true}
+              {:key "b" :existing? false :value [:wun/Text {:key "b"} "B"]}]
+             (:order p))))
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest keyed-remove-elides-from-order
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "b"} "B"]
+             [:wun/Text {:key "c"} "C"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "c"} "C"]]
+        patches (diff/diff old new)]
+    (is (= 1 (count patches)))
+    (is (= [{:key "a" :existing? true}
+            {:key "c" :existing? true}]
+           (:order (first patches))))
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest keyed-prop-change-recurses-no-children-op
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {:key "b"} "B"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "a"} "A!"]
+             [:wun/Text {:key "b"} "B"]]
+        patches (diff/diff old new)]
+    (is (= 1 (count patches)))
+    (let [p (first patches)]
+      ;; Order unchanged -> no :children op, just a recursive replace.
+      (is (= :replace (:op p)))
+      (is (= [0 0] (:path p))))
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest keyed-reorder-with-prop-change
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A1"]
+             [:wun/Text {:key "b"} "B"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "b"} "B"]
+             [:wun/Text {:key "a"} "A2"]]
+        patches (diff/diff old new)]
+    ;; Topology op + recursive replace at new index of "a" (1).
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest mixed-keyed-and-unkeyed-falls-back-to-positional
+  (let [old [:wun/Stack {}
+             [:wun/Text {:key "a"} "A"]
+             [:wun/Text {} "no-key"]]
+        new [:wun/Stack {}
+             [:wun/Text {:key "a"} "A!"]
+             [:wun/Text {} "no-key"]]
+        patches (diff/diff old new)]
+    (is (every? #{:replace :insert :remove} (map :op patches)))
+    (is (= new (diff/apply-patches old patches)))))
+
+(deftest big-keyed-reorder-roundtrips
+  (let [build (fn [keys-vec props-fn]
+                (into [:wun/Stack {}]
+                      (map (fn [k]
+                             [:wun/Card (merge {:key k} (props-fn k))
+                              [:wun/Text {} (str "card-" k)]])
+                           keys-vec)))
+        old (build ["a" "b" "c" "d" "e" "f"] (constantly {}))
+        new (build ["f" "a" "x" "c" "b"] (fn [k] (when (= k "a") {:badge true})))
+        patches (diff/diff old new)]
+    (is (= new (diff/apply-patches old patches)))))

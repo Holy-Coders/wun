@@ -103,17 +103,20 @@
          raw         (current-tree-for conn-id screen-key)
          caps        (state/caps ch)
          fmt         (state/fmt ch)
+         env-ver     (state/envelope-version ch)
          tree        (capabilities/substitute raw caps web-frame-src)
          prior       (state/prior-tree ch)
-         patches     (diff/diff prior tree)
+         patches     (binding [diff/*envelope-version* env-ver]
+                       (diff/diff prior tree))
          meta        (screens/render-meta screen-key conn-state)
          prior-meta  (state/prior-meta ch)
          meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})
          resync-extra (when was-stale? {:resync? true})]
      (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra)
        (let [env  (wire/patch-envelope patches
-                                       (merge {:resolves-intent resolves-intent
-                                               :state           conn-state}
+                                       (merge {:resolves-intent  resolves-intent
+                                               :state            conn-state
+                                               :envelope-version env-ver}
                                               meta-extra
                                               resync-extra
                                               extra-keys))
@@ -219,11 +222,18 @@
         ;; saved slice into the freshly-created state.
         session-token (or (get headers "x-wun-session")
                           (:session-token params))
+        ;; Wire envelope version negotiation: client requests via header
+        ;; or query param, server downgrades when asked or defaults to
+        ;; the latest version it supports.
+        env-ver       (wire/negotiate-version
+                       (or (get headers "x-wun-envelope")
+                           (:envelope params)))
         caps          (capabilities/parse caps-str)
         fmt           (parse-fmt fmt-str)
         screen-key    (resolve-screen-key params)
         conn-id       (str (java.util.UUID/randomUUID))
-        init-ctx      (cond-> {} session-token (assoc :session-token session-token))]
+        init-ctx      (cond-> {:envelope-version env-ver}
+                        session-token (assoc :session-token session-token))]
     (state/add-connection! event-ch caps fmt screen-key conn-id init-ctx)
     (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s resumed?=%s"
                 conn-id screen-key (name fmt) (pr-str caps) (boolean session-token))
@@ -416,13 +426,17 @@
               (cond
                 (nil? binding-key)
                 ;; No conn-id and no session token -- can't validate.
-                ;; Reject so a malicious page can't trickle intents through.
+                ;; Reject so a malicious page can't trickle intents through
+                ;; (when CSRF enforcement is on; otherwise let it pass for
+                ;; transitional deploys with mixed-version clients).
                 (do (telemetry/emit! :wun/csrf.miss
                                      {:reason :no-binding-key})
-                    (assoc ctx :response
-                           {:status 403
-                            :headers {"Content-Type" "application/json"}
-                            :body "{\"status\":\"error\",\"reason\":\"csrf-missing-binding\"}"}))
+                    (if (csrf/required?)
+                      (assoc ctx :response
+                             {:status 403
+                              :headers {"Content-Type" "application/json"}
+                              :body "{\"status\":\"error\",\"reason\":\"csrf-missing-binding\"}"})
+                      ctx))
 
                 (csrf/valid? binding-key token)
                 ctx
@@ -430,10 +444,12 @@
                 :else
                 (do (telemetry/emit! :wun/csrf.miss
                                      {:conn-id cid :reason :invalid-token})
-                    (assoc ctx :response
-                           {:status 403
-                            :headers {"Content-Type" "application/json"}
-                            :body "{\"status\":\"error\",\"reason\":\"csrf-invalid\"}"})))))})
+                    (if (csrf/required?)
+                      (assoc ctx :response
+                             {:status 403
+                              :headers {"Content-Type" "application/json"}
+                              :body "{\"status\":\"error\",\"reason\":\"csrf-invalid\"}"})
+                      ctx)))))})
 
 (defn- intent-handler [request]
   (let [start                     (System/nanoTime)

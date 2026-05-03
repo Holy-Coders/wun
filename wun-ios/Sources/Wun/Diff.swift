@@ -35,6 +35,8 @@ public enum Diff {
             return insert(tree, path: patch.path, value: patch.value ?? .null)
         case .remove:
             return remove(tree, path: patch.path)
+        case .children:
+            return children(tree, path: patch.path, order: patch.order ?? [])
         }
     }
 
@@ -64,6 +66,61 @@ public enum Diff {
         let parent = Array(path.dropLast())
         let idx = path.last!
         return updateAtPath(tree, path: parent) { removeChild($0, at: idx) }
+    }
+
+    /// Wire-v2 keyed-children topology op. Rebuild `path`'s children list
+    /// to match `order`: existing entries are looked up in the current
+    /// children by `:key` and reused; entries flagged `existing? = false`
+    /// drop in their inline `value` instead.
+    static func children(_ tree: JSON, path: [Int], order: [ChildOrderEntry]) -> JSON {
+        if path.isEmpty {
+            return replayChildrenOrder(tree, order: order)
+        }
+        return updateAtPath(tree, path: path) { node in
+            replayChildrenOrder(node, order: order)
+        }
+    }
+
+    static func replayChildrenOrder(_ tree: JSON, order: [ChildOrderEntry]) -> JSON {
+        guard case .array(let array) = tree else { return tree }
+        let offset = childOffset(array)
+        // Build a map from key -> existing child for everything currently
+        // sitting in the parent's children slot.
+        var byKey: [String: JSON] = [:]
+        for i in offset..<array.count {
+            if let k = keyOf(array[i]) {
+                byKey[k] = array[i]
+            }
+        }
+        // Rebuild children from `order`. Existing entries take the live
+        // child wherever it is now; new entries take the inline value.
+        var rebuilt: [JSON] = Array(array[0..<offset])
+        for entry in order {
+            guard let keyStr = jsonKeyAsString(entry.key) else { continue }
+            if entry.existing, let existing = byKey[keyStr] {
+                rebuilt.append(existing)
+            } else if let v = entry.value {
+                rebuilt.append(v)
+            }
+            // Else: client thought existing but local tree lost it -- drop.
+        }
+        return .array(rebuilt)
+    }
+
+    private static func keyOf(_ node: JSON) -> String? {
+        guard case .array(let arr) = node, hasProps(arr),
+              case .object(let props) = arr[1] else { return nil }
+        return props["key"].flatMap { jsonKeyAsString($0) }
+    }
+
+    private static func jsonKeyAsString(_ value: JSON) -> String? {
+        switch value {
+        case .string(let s): return s
+        case .int(let i):    return String(i)
+        case .double(let d): return String(d)
+        case .bool(let b):   return String(b)
+        default:             return nil
+        }
     }
 
     // MARK: - Path navigation

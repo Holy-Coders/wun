@@ -118,19 +118,25 @@
 
 (defn add-connection!
   "Register an SSE channel and eagerly create its state slice. The
-   `ctx` map carries handshake-time values (notably `:session-token`)
-   that the init-state-fn uses to hydrate from a durable store. We
-   seed the slice synchronously here so the very first broadcast
-   reads the resumed state, not the bare `*init-state*`."
+   `ctx` map carries handshake-time values (notably `:session-token`
+   and `:envelope-version`) that the init-state-fn uses to hydrate
+   from a durable store. We seed the slice synchronously here so the
+   very first broadcast reads the resumed state, not the bare
+   `*init-state*`."
   ([event-ch caps fmt screen-key conn-id]
    (add-connection! event-ch caps fmt screen-key conn-id {}))
   ([event-ch caps fmt screen-key conn-id ctx]
-   (swap! connections assoc event-ch {:prior        nil
-                                      :caps         caps
-                                      :fmt          fmt
-                                      :screen-stack [screen-key]
-                                      :conn-id      conn-id})
+   (swap! connections assoc event-ch
+          {:prior            nil
+           :caps             caps
+           :fmt              fmt
+           :screen-stack     [screen-key]
+           :conn-id          conn-id
+           :envelope-version (or (:envelope-version ctx) 2)})
    (swap! conn-states assoc conn-id (compute-init-state conn-id ctx))))
+
+(defn envelope-version [event-ch]
+  (get-in @connections [event-ch :envelope-version] 2))
 
 (defn- conn-id-has-other-channel? [m conn-id without-ch]
   (some (fn [[ch v]]

@@ -64,13 +64,34 @@
 ;; Envelopes
 
 (def envelope-version
-  "Current wire envelope version. Phase 1 ships v1; phase 2 bumps to v2
-   for key-aware list diffing. Servers serve clients at the version
-   they negotiate at connect (header `X-Wun-Envelope` / query
+  "Current wire envelope version. Phase 2 ships v2 (key-aware list
+   diffing via the `:children` op). Servers serve clients at the
+   version they negotiate at connect (header `X-Wun-Envelope` / query
    `?envelope=`); absent negotiation, the server defaults to the
    current version. Clients compare the version on receive and either
    downgrade rendering or refuse to apply the envelope."
-  1)
+  2)
+
+(def supported-envelope-versions
+  "Versions a server is willing to serve. v1 stays supported because
+   shipped iOS/Android binaries on App-Store-style channels can't be
+   upgraded synchronously with the server."
+  #{1 2})
+
+(defn negotiate-version
+  "Pick the wire version to use for this connection. `requested` may
+   be nil (use server default), an integer, or an integer-shaped
+   string. Falls back to the highest version both sides support."
+  [requested]
+  (let [r (cond
+            (nil? requested)    nil
+            (integer? requested) requested
+            :else                (try (Integer/parseInt (str requested))
+                                     (catch Exception _ nil)))]
+    (cond
+      (nil? r)                       envelope-version
+      (contains? supported-envelope-versions r) r
+      :else                          envelope-version)))
 
 (defn patch-envelope
   "Build the SSE envelope: a (possibly empty) `:patches` vector and
@@ -95,7 +116,7 @@
                        full re-render rather than an incremental patch"
   ([patches] (patch-envelope patches nil))
   ([patches extras]
-   (merge {:envelope-version envelope-version
+   (merge {:envelope-version (or (:envelope-version extras) envelope-version)
            :patches          (vec patches)
            :status           :ok}
           (some-> extras (select-keys [:resolves-intent :state

@@ -89,6 +89,19 @@
          (bytes-eq? expected actual))))
 
 ;; ---------------------------------------------------------------------------
+;; Enforcement toggle. Defaults to true. Operators with an installed base
+;; of pre-CSRF native clients can flip `WUN_CSRF_REQUIRED=false` until
+;; their app builds catch up; the server still issues tokens (no behaviour
+;; change for clients that DO echo them) but won't reject unsigned posts.
+
+(defn required?
+  "True iff CSRF token validation should reject requests that fail.
+   Reads `WUN_CSRF_REQUIRED` env var (default true)."
+  []
+  (let [v (System/getenv "WUN_CSRF_REQUIRED")]
+    (if (nil? v) true (not= (.toLowerCase ^String v) "false"))))
+
+;; ---------------------------------------------------------------------------
 ;; Pedestal interceptor wiring is in wun.server.http; this namespace
 ;; stays pure so it can be unit-tested without Pedestal on the
 ;; classpath.

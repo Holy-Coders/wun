@@ -23,9 +23,10 @@ object Diff {
     // MARK: - Public apply
 
     fun apply(tree: JsonElement, patch: Patch): JsonElement = when (patch.opEnum) {
-        PatchOp.Replace -> replace(tree, patch.path, patch.value ?: JsonNull)
-        PatchOp.Insert  -> insert(tree,  patch.path, patch.value ?: JsonNull)
-        PatchOp.Remove  -> remove(tree,  patch.path)
+        PatchOp.Replace  -> replace(tree, patch.path, patch.value ?: JsonNull)
+        PatchOp.Insert   -> insert(tree,  patch.path, patch.value ?: JsonNull)
+        PatchOp.Remove   -> remove(tree,  patch.path)
+        PatchOp.Children -> children(tree, patch.path, patch.order ?: emptyList())
     }
 
     fun apply(tree: JsonElement, patches: List<Patch>): JsonElement =
@@ -52,6 +53,55 @@ object Diff {
         val parent = path.dropLast(1)
         val idx = path.last()
         return updateAtPath(tree, parent) { node -> removeChild(node, idx) }
+    }
+
+    /** Wire-v2 keyed-children topology op. Rebuild `path`'s children list
+     *  to match `order`: existing entries are looked up in the current
+     *  children by `:key` and reused; entries flagged `existing? = false`
+     *  drop in their inline `value` instead. */
+    private fun children(tree: JsonElement, path: List<Int>, order: List<ChildOrderEntry>): JsonElement {
+        if (path.isEmpty()) return replayChildrenOrder(tree, order)
+        return updateAtPath(tree, path) { node -> replayChildrenOrder(node, order) }
+    }
+
+    private fun replayChildrenOrder(tree: JsonElement, order: List<ChildOrderEntry>): JsonElement {
+        if (tree !is JsonArray) return tree
+        val offset = childOffset(tree)
+        val byKey = mutableMapOf<String, JsonElement>()
+        for (i in offset until tree.size) {
+            keyOf(tree[i])?.let { byKey[it] = tree[i] }
+        }
+        val rebuilt = mutableListOf<JsonElement>().apply {
+            addAll(tree.subList(0, offset))
+        }
+        for (entry in order) {
+            val keyStr = jsonKeyAsString(entry.key) ?: continue
+            if (entry.existing) {
+                val existing = byKey[keyStr]
+                if (existing != null) {
+                    rebuilt.add(existing)
+                } else if (entry.value != null) {
+                    // Defensive: client thought it was existing but local
+                    // tree lost it. Use the inline value if any.
+                    rebuilt.add(entry.value)
+                }
+            } else if (entry.value != null) {
+                rebuilt.add(entry.value)
+            }
+        }
+        return JsonArray(rebuilt)
+    }
+
+    private fun keyOf(node: JsonElement): String? {
+        if (node !is JsonArray || !hasProps(node)) return null
+        val props = node[1] as? JsonObject ?: return null
+        val keyJson = props["key"] ?: return null
+        return jsonKeyAsString(keyJson)
+    }
+
+    private fun jsonKeyAsString(value: JsonElement): String? = when (value) {
+        is JsonPrimitive -> if (value.isString) value.content else value.content
+        else             -> null
     }
 
     // MARK: - Path navigation

@@ -23,12 +23,19 @@ data class Envelope(
     val patches: List<Patch> = emptyList(),
     val status: String,
     val state: JsonElement? = null,
-    @SerialName("resolves-intent") val resolvesIntent: String? = null,
-    @SerialName("conn-id")         val connId: String? = null,
-    @SerialName("screen-stack")    val screenStack: List<String>? = null,
+    @SerialName("resolves-intent")  val resolvesIntent: String? = null,
+    @SerialName("conn-id")          val connId: String? = null,
+    @SerialName("screen-stack")     val screenStack: List<String>? = null,
     val presentations: List<String>? = null,
     val meta: JsonElement? = null,
     val error: JsonElement? = null,
+    /** Wire envelope version negotiated at handshake (1 or 2). */
+    @SerialName("envelope-version") val envelopeVersion: Int? = null,
+    /** CSRF token bound to this connection's session, sent on the
+     *  initial connect frame; the client echoes it on /intent POSTs. */
+    @SerialName("csrf-token")       val csrfToken: String? = null,
+    /** True when this envelope is a backpressure-driven full re-render. */
+    @SerialName("resync?")          val resync: Boolean? = null,
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
