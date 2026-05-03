@@ -157,26 +157,97 @@ That walks `conn-states` itself and fans out. Each touched slice
 fires its own watch, persists, and (on Postgres) emits its own
 NOTIFY. Other instances pick the change up via the bus.
 
+## SSE handshake + session-token resume
+
+The SSE handshake reads a session token from either:
+
+- `?session-token=<token>` query param (web client; EventSource
+  can't set custom headers), or
+- `X-Wun-Session: <token>` request header (native clients)
+
+`add-connection!` passes the token through to the init-state-fn as
+the `ctx` map's `:session-token` key. The per-app init-state-fn (set
+in `server/main.clj`) calls `auth/load-session-by-token` to resolve
+the token to a user, then `persist/load-state-by-user` to load the
+saved slice, and folds both into the freshly-created conn-state:
+
+```clojure
+(wun-state/register-init-state-fn!
+ (fn [_conn-id ctx]
+   (let [token   (:session-token ctx)
+         session (when token (myapp.server.auth/load-session-by-token token))
+         saved   (when session (myapp.persist/load-state-by-user (:user-id session)))]
+     (cond-> {:notes (myapp.server.notes-store/list-notes)}
+       saved   (merge saved)
+       session (assoc :session session)))))
+```
+
+The web client (`wun.web.core/caps-url`) reads the token out of the
+existing localStorage hot-cache before each SSE connect; logout
+dissocs `:session` from confirmed-state, the next save! drops it
+from localStorage, and the next reconnect skips resume.
+
+A stale token on the client is a no-op: the server's
+`load-session-by-token` returns nil for any token not present in
+the `sessions` table, so the cond-> gate skips the merge.
+
+## Walkthrough: open browser, log in, close tab, open again
+
+```
+1. cold open
+   browser -> GET /wun?caps=...                (no session-token)
+   server: fresh conn-id, empty slice (modulo :notes preload)
+   <- patch envelope: {:counter 0 :notes [...]}
+
+2. log in
+   browser -> POST /intent {:intent :myapp/log-in :params {...}}
+   server: morph runs, sets :session in slice
+   server: persist watch fires, UPSERTs wun_conn_state user=42
+   server: (postgres only) pg_notify wun_state_change '42'
+   <- patch envelope: state delta with :session
+   browser: confirmed-state updated; persist/save! writes to localStorage
+
+3. work for a while
+   browser -> POST /intent {:intent :myapp/inc}    (counter++)
+   server: slice update, persist watch writes wun_conn_state
+   <- patch envelope
+
+4. close tab, open again (same browser)
+   browser: persist/load reads localStorage, has token+counter
+   browser -> GET /wun?caps=...&session-token=abc123
+   server: add-connection! resolves token -> user 42
+           init-state-fn: load-state-by-user 42 -> {:counter 17}
+           slice = {:notes [...], :counter 17, :session {...}}
+   <- patch envelope: full state including resumed counter
+
+5. cross-device (postgres only)
+   user opens phone, logs in: phone gets its own token
+   phone increments counter: persist write + pg_notify
+   instance serving the original tab receives notify, reloads
+   wun_conn_state for user 42, broadcasts patch to its SSE
+   tab updates within ~one poll-tick
+```
+
 ## What's still missing
 
-- **Auto-rehydrate on SSE reconnect.** The handshake doesn't yet
-  carry a session token, so a fresh conn-id can't be tied back to a
-  saved user-id at connect time. Once it does, the init-state-fn
-  will call `(persist/load-state-by-user user-id)` and fold the
-  result into the new slice. Today this happens via the login
-  intent (which sets :session, triggers the watch, etc.) on the
-  next interaction.
 - **Slice eviction policy.** Closed connections leave their slices
-  behind. The `gc-tick!` in http.clj prunes the SSE channel map
-  but not `conn-states`. Real-world apps want a TTL or an eviction
-  on `state/remove-connection!`. This is intentionally not wired
-  up yet because durability without auto-rehydrate would lose the
-  user's state on reconnect.
+  behind. The `gc-tick!` in `http.clj` prunes the SSE channel map
+  but not `conn-states`. Real-world apps want a TTL eviction here;
+  the natural hook is to dissoc-from `conn-states` whenever
+  `state/remove-connection!` runs and there's no other live SSE
+  with the same user-id. Not wired up because the durable layer
+  rebuilds the slice on resume anyway, so memory growth is bounded
+  by concurrent active users + their offline tail.
 - **Datomic cross-instance bus.** Datomic Local is in-process by
   design. For a multi-instance Datomic deployment you'd switch to
   Datomic Cloud (or Pro) and use its own change feed, OR keep the
   Postgres LISTEN/NOTIFY pattern by adding a separate Postgres
   side-channel just for notifications.
+- **Native client session resume.** iOS/Android can already set
+  `X-Wun-Session` on connect, but the SwiftUI / Compose clients
+  don't yet read the token from their local hot-cache and attach
+  it. Same shape as the web client change in `wun.web.core/caps-url`,
+  one site per platform.
 
 ## Migrating an existing app
 

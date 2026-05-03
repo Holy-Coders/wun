@@ -50,3 +50,14 @@
         FROM users u JOIN sessions s ON s.user_id = u.id
        WHERE s.token = ?"
      token])))
+
+(defn load-session-by-token
+  "Resolve an opaque session token to `{:user-id, :email, :token}`,
+   or nil if the token doesn't match a live row. Called by the
+   init-state-fn during SSE handshake to rehydrate a slice."
+  [token]
+  (when token
+    (try
+      (when-let [{:users/keys [id email]} (current-user token)]
+        {:user-id id :email email :token token})
+      (catch Throwable _ nil))))

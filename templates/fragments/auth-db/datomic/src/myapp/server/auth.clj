@@ -69,3 +69,14 @@
                  [?s :sessions/user ?u]
                  [?u :users/email ?email]]
         (db/db) token)))
+
+(defn load-session-by-token
+  "Resolve an opaque session token to `{:user-id, :email, :token}`,
+   or nil if the token doesn't match a live row. Called by the
+   init-state-fn during SSE handshake to rehydrate a slice."
+  [token]
+  (when token
+    (try
+      (when-let [[user-id email] (current-user token)]
+        {:user-id user-id :email email :token token})
+      (catch Throwable _ nil))))

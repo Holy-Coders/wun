@@ -180,18 +180,27 @@
    POSTs and route framework intents (`:wun/navigate`, `:wun/pop`)
    back to the originating connection."
   [event-ch ctx]
-  (let [request    (:request ctx)
-        headers    (:headers request)
-        params     (:query-params request)
-        caps-str   (or (get headers "x-wun-capabilities") (:caps params))
-        fmt-str    (or (get headers "x-wun-format")       (:fmt params))
-        caps       (capabilities/parse caps-str)
-        fmt        (parse-fmt fmt-str)
-        screen-key (resolve-screen-key params)
-        conn-id    (str (java.util.UUID/randomUUID))]
-    (state/add-connection! event-ch caps fmt screen-key conn-id)
-    (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s"
-                conn-id screen-key (name fmt) (pr-str caps))
+  (let [request       (:request ctx)
+        headers       (:headers request)
+        params        (:query-params request)
+        caps-str      (or (get headers "x-wun-capabilities") (:caps params))
+        fmt-str       (or (get headers "x-wun-format")       (:fmt params))
+        ;; Session-token resume: web clients pass it on the URL because
+        ;; EventSource can't set custom headers; native clients set the
+        ;; header directly. The token is opaque to the framework -- the
+        ;; per-app init-state-fn (registered by `register-init-state-fn!`)
+        ;; resolves it against the auth/sessions table and folds the
+        ;; saved slice into the freshly-created state.
+        session-token (or (get headers "x-wun-session")
+                          (:session-token params))
+        caps          (capabilities/parse caps-str)
+        fmt           (parse-fmt fmt-str)
+        screen-key    (resolve-screen-key params)
+        conn-id       (str (java.util.UUID/randomUUID))
+        init-ctx      (cond-> {} session-token (assoc :session-token session-token))]
+    (state/add-connection! event-ch caps fmt screen-key conn-id init-ctx)
+    (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s resumed?=%s"
+                conn-id screen-key (name fmt) (pr-str caps) (boolean session-token))
     (broadcast-to-channel! event-ch nil
                            {:conn-id       conn-id
                             :screen-stack  [screen-key]

@@ -30,10 +30,23 @@
 (defn register-init-state-fn! [f]
   (reset! init-state-fn f))
 
-(defn- compute-init-state [conn-id]
-  (if-let [f @init-state-fn]
-    (or (f conn-id) *init-state*)
-    *init-state*))
+(defn- call-init-fn
+  "Invoke `f` as 2-arity `(f conn-id ctx)` and fall back to 1-arity
+   `(f conn-id)` for callers that haven't migrated. Errors fall back
+   to `*init-state*` so a misbehaving hook never wedges connect."
+  [f conn-id ctx]
+  (try
+    (try (f conn-id ctx)
+         (catch clojure.lang.ArityException _
+           (f conn-id)))
+    (catch Throwable _ nil)))
+
+(defn- compute-init-state
+  ([conn-id]     (compute-init-state conn-id {}))
+  ([conn-id ctx]
+   (if-let [f @init-state-fn]
+     (or (call-init-fn f conn-id ctx) *init-state*)
+     *init-state*)))
 
 (defonce conn-states (atom {}))
 
@@ -103,12 +116,21 @@
 ;; same code path as ongoing broadcasts.
 (defonce connections (atom {}))
 
-(defn add-connection! [event-ch caps fmt screen-key conn-id]
-  (swap! connections assoc event-ch {:prior        nil
-                                     :caps         caps
-                                     :fmt          fmt
-                                     :screen-stack [screen-key]
-                                     :conn-id      conn-id}))
+(defn add-connection!
+  "Register an SSE channel and eagerly create its state slice. The
+   `ctx` map carries handshake-time values (notably `:session-token`)
+   that the init-state-fn uses to hydrate from a durable store. We
+   seed the slice synchronously here so the very first broadcast
+   reads the resumed state, not the bare `*init-state*`."
+  ([event-ch caps fmt screen-key conn-id]
+   (add-connection! event-ch caps fmt screen-key conn-id {}))
+  ([event-ch caps fmt screen-key conn-id ctx]
+   (swap! connections assoc event-ch {:prior        nil
+                                      :caps         caps
+                                      :fmt          fmt
+                                      :screen-stack [screen-key]
+                                      :conn-id      conn-id})
+   (swap! conn-states assoc conn-id (compute-init-state conn-id ctx))))
 
 (defn remove-connection! [event-ch]
   (swap! connections dissoc event-ch))

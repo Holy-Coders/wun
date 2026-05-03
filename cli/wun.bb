@@ -1251,9 +1251,15 @@
                  (str "(" dbns "/init!)\n  "
                       "(myapp.persist/init!)\n  "
                       "(wun-state/register-init-state-fn!\n   "
-                      "(fn [conn-id]\n     "
-                      "(merge {:notes (" notes-store "/list-notes)}\n            "
-                      "(myapp.persist/load-state conn-id))))\n  "))
+                      "(fn [_conn-id ctx]\n     "
+                      "(let [token   (:session-token ctx)\n           "
+                      (if auth?
+                        (str "session (when token (myapp.server.auth/load-session-by-token token))\n           ")
+                        "session nil\n           ")
+                      "saved   (when session (myapp.persist/load-state-by-user (:user-id session)))]\n       "
+                      "(cond-> {:notes (" notes-store "/list-notes)}\n         "
+                      "saved   (merge saved)\n         "
+                      "session (assoc :session session)))))\n  "))
                (when (and db? auth?)
                  (str "(" authns "/init!)\n  "))
                (when (= db :postgres)
