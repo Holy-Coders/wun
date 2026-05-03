@@ -12,36 +12,35 @@ hero:
       link: /getting-started/install/
       icon: right-arrow
       variant: primary
-    - text: Why Wun
-      link: /getting-started/why-wun/
+    - text: Browse the docs
+      link: /concepts/sdui/
       icon: open-book
-      variant: minimal
-    - text: View on GitHub
-      link: https://github.com/Holy-Coders/wun
-      icon: external
+      variant: secondary
 ---
 
 import { Aside, Tabs, TabItem, Steps, Code } from '@astrojs/starlight/components';
-import PlatformStrip from '../../components/PlatformStrip.astro';
-import Feature       from '../../components/Feature.astro';
-import Compare       from '../../components/Compare.astro';
-import { withBase }  from '~/utils/base.mjs';
+import PlatformTrio from '../../components/PlatformTrio.astro';
+import Feature      from '../../components/Feature.astro';
+import Compare      from '../../components/Compare.astro';
+import { withBase } from '~/utils/base.mjs';
 
 <div class="wun-eyebrow">
   <span class="wun-eyebrow__dot" aria-hidden="true"></span>
-  Clojure-first &middot; SDUI for the post-LiveView era &middot; v0.1 spike
+  Clojure-first &middot; SDUI for the post-LiveView era
 </div>
 
-## The same screen, every platform
+## One Hiccup tree. Three native renders.
 
 <div class="wun-grid-bg">
-  <PlatformStrip />
+  <PlatformTrio />
 </div>
 
 The server holds state. Patches stream over a single SSE channel.
-Every client renders **natively** from the same tree. Tap a button,
-the intent flies back, the server morphs state, and every connected
-client sees the new tree on the next patch.
+Every client binds the same namespaced keywords to native widgets.
+The triptych above is the same `[:wun/Stack ...]` rendered through
+three different render registries — flat material on the web,
+SwiftUI shapes on iOS, Material 3 on Compose. No fake screenshots,
+no platform-specific schema.
 
 <Aside type="tip" title="Read this in 60 seconds">
 **Wun moves the UI loop to the server**. You write three macros —
@@ -260,8 +259,14 @@ surface tight.
 
 ## Status
 
-The framework is a working spike — see the
-[changelog](https://github.com/Holy-Coders/wun/commits/master) on
-GitHub for what's landed, and
-[issues](https://github.com/Holy-Coders/wun/issues) for what's next.
-Browse the docs sidebar for the concepts and the CLI reference.
+The framework has been through a production-readiness pass:
+hardened SSE transport (heartbeat, backpressure, rate limit,
+CSRF, telemetry), wire envelope v2 with key-aware list diffing,
+forms + streaming uploads, theme primitives that cascade
+server → client, in-process pubsub + presence, and an error
+boundary that keeps the SSE stream alive when a screen render
+throws. Web client rebuilt on Replicant — zero React, zero JS
+deps. iOS and Android decode v2, echo CSRF, and mirror the
+theme. See the [changelog](https://github.com/Holy-Coders/wun/commits/master)
+for what's landed and the [open issues](https://github.com/Holy-Coders/wun/issues)
+for what's next.

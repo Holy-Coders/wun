@@ -1,0 +1,164 @@
+---
+title: Security
+description: CSRF tokens, rate limiting, session rotation, heartbeats, and the env vars that gate them.
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+> **TL;DR.** Wun's `/intent` endpoint requires a CSRF token (HMAC
+> bound to session/conn-id) and a token-bucket rate limit. Session
+> tokens rotate on demand and can be revoked. Heartbeats keep
+> proxies from killing the SSE stream and let clients detect dead
+> connections. All knobs are env-var configurable.
+
+## CSRF
+
+The server issues a CSRF token in the first SSE envelope and
+expects it back on every `/intent` POST as either:
+
+- the `X-Wun-CSRF` header (preferred), or
+- the body's `:csrf-token` field
+
+The token is `HMAC-SHA256(secret, binding-key)` where `binding-key`
+is the user's session token if one is present, otherwise the
+server-issued conn-id. Constant-time validation; missing or
+mismatched tokens return HTTP 403.
+
+```bash
+# Set in your deployment platform's secret store.
+WUN_CSRF_SECRET=$(openssl rand -hex 32)
+```
+
+If `WUN_CSRF_SECRET` is unset, Wun generates an ephemeral 32-byte
+secret at first call and logs a warning. Fine for development;
+production needs a stable secret so tokens survive restarts and
+work across replicas.
+
+### Transitional toggle
+
+`WUN_CSRF_REQUIRED=false` makes the interceptor skip rejection
+even on mismatched tokens. The server still issues tokens; clients
+that DO echo them keep working. Useful for deploys with an
+installed base of pre-CSRF native binaries.
+
+```bash
+# Default: required.
+WUN_CSRF_REQUIRED=true        # explicit
+WUN_CSRF_REQUIRED=false       # skip enforcement (transitional only)
+```
+
+## Rate limiting
+
+Token-bucket limiter on `/intent` and `/upload`, scoped two ways:
+
+| scope | default capacity / refill   |
+|-------|-----------------------------|
+| conn  | 60 burst, 30/sec sustained  |
+| ip    | 120 burst, 60/sec sustained |
+
+A blocked request returns HTTP 429 with `Retry-After: 1`. Buckets
+self-evict after 60s of idle.
+
+Tune at startup:
+
+```clojure
+(require '[wun.server.rate-limit :as rl])
+
+(rl/configure!
+ {:conn {:capacity 200 :refill-per-sec 80}
+  :ip   {:capacity 400 :refill-per-sec 160}
+  :idle-evict-ms 120000})
+```
+
+## Sessions
+
+Wun stores per-conn state slices keyed by session token (when
+present) so a reconnect rehydrates seamlessly. Apps wire their
+auth-table lookup via `register-init-state-fn!`; Wun ships
+rotation + revocation helpers:
+
+```clojure
+(require '[wun.server.session :as session])
+
+;; Issue a fresh token, revoke the old one with a 5-minute TTL,
+;; run any registered rotation handler. Used on privileged actions
+;; to mitigate session fixation.
+(session/rotate! old-token)
+
+;; On logout: add to the revocation set so any in-flight reconnect
+;; with the old token gets a clean 401.
+(session/revoke! old-token)
+```
+
+There's also a built-in `POST /session/rotate` endpoint that
+performs the rotation in one round trip and ships the new
+session-token + csrf-token back to the client.
+
+For durable revocation across restarts / replicas, plug a backing
+store:
+
+```clojure
+(session/set-store!
+ {:read   (fn [token]      (redis/get  k:revoked token))
+  :write  (fn [token exp]  (redis/setex k:revoked token exp))
+  :delete (fn [token]      (redis/del  k:revoked token))})
+```
+
+## Heartbeats
+
+Every connection receives a `{:type :ping :ts ms}` envelope on a
+configurable interval (default 25s, below the typical 60s LB idle
+timeout) so dead-but-undetected proxies surface and the client's
+watchdog can force a reconnect when no frames have arrived for
+twice the interval.
+
+```bash
+WUN_HEARTBEAT_INTERVAL_SECS=15
+```
+
+Heartbeats are a separate SSE event from patch envelopes; the
+client just resets its `last-frame-ms` timer.
+
+## Backpressure
+
+When a client can't keep up with the server's emit rate, the
+server's per-conn outbound channel fills. `offer!` returns false;
+Wun marks the conn **stale** and the next successful broadcast
+forces a snapshot resync (`:resync? true` envelope). The client
+clears its pending-intents queue and reconciles against the fresh
+server view.
+
+This is policy `(c)` from the [wire format](/concepts/wire-format/)
+docs: don't drop patches silently, don't tear down the connection;
+accept the occasional full re-render in exchange for guaranteed
+correctness.
+
+## What you have to wire yourself
+
+- **HTTPS termination**: Wun runs on Pedestal/Jetty; put it behind
+  a TLS-terminating reverse proxy (nginx, Caddy, fly's edge) in
+  production.
+- **Auth**: Wun is auth-system-agnostic. The `init-state-fn`
+  receives the session token; you decide what it means. See the
+  generated app's `myapp.server.auth` namespace for the standard
+  cookie-less password-reset / signup flow.
+- **Secret rotation cadence**: Wun honours whatever value
+  `WUN_CSRF_SECRET` has at process start. Rotating it requires a
+  restart with a fresh value (or a deploy strategy that does
+  graceful handoff).
+
+<Aside type="caution" title="Don't disable CSRF in production">
+The transitional `WUN_CSRF_REQUIRED=false` toggle exists for
+deploys mid-rollout of pre-CSRF native clients. Once your fleet
+is on a build that echoes the token, set it back to `true`. A
+production server with CSRF off is a SSE-survivable XSS away
+from full account takeover.
+</Aside>
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Wire format"   href="/concepts/wire-format/" />
+  <LinkCard title="Reconnect & retry" href="/architecture/reconnect/" />
+  <LinkCard title="Observability" href="/architecture/observability/" />
+</CardGrid>

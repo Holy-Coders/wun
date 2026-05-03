@@ -1,0 +1,177 @@
+---
+title: Forms & uploads
+description: Server-driven forms with field/form-level state, validation, and streaming file uploads with progress patches.
+---
+
+import { LinkCard, CardGrid, Aside } from '@astrojs/starlight/components';
+
+> **TL;DR.** `:wun/Form` and `:wun/Field` plus four framework intents
+> (`:wun.forms/change`, `/touch`, `/reset`, `/submit`) give you
+> Phoenix-LiveView-shaped forms in Wun's data idiom. Form state
+> lives in app-state under `[:forms <form-id>]`. File uploads use a
+> raw-body `/upload` endpoint with progress patches piggybacking
+> the SSE stream.
+
+## State shape
+
+```clojure
+;; Lives at [:forms :my-form] inside the conn's state slice.
+{:values     {:email "x@y.com" :password ""}
+ :errors     {:email   nil
+              :password "required"}
+ :touched    #{:email}
+ :submitting? false
+ :submitted?  false}
+```
+
+The morph for the four framework intents lives in `wun.forms` (cljc),
+runs identically on server (authoritative) and web client
+(optimistic), and converges through the standard `:resolves-intent`
+round trip.
+
+## Defining a form
+
+```clojure
+(require '[wun.forms :as forms])
+
+(forms/defform :auth/sign-in
+  {:schema  [:map
+             [:email    [:re #".+@.+"]]
+             [:password [:string {:min 8}]]]
+   :handler (fn [state values]
+              (if-let [user (db/find-user (:email values))]
+                (if (auth/check-password user (:password values))
+                  [(assoc state :session {:user-id (:id user)})
+                   {:status :ok}]
+                  [state {:status :error
+                          :errors {:password "incorrect"}}])
+                [state {:status :error
+                        :errors {:email "no such account"}}]))})
+```
+
+Schema validation runs server-side at submit. On failure, errors
+are merged into `:errors`; on success, the `:handler` receives the
+already-validated values and returns `[new-state outcome]`.
+
+## Rendering a form
+
+```clojure
+(defscreen :auth/sign-in
+  {:path "/sign-in"
+   :render
+   (fn [state]
+     [:wun/Form {:id :auth/sign-in}
+      [:wun/Field {:form  :auth/sign-in
+                   :name  :email
+                   :type  "email"
+                   :label "Email"}]
+      [:wun/Field {:form  :auth/sign-in
+                   :name  :password
+                   :type  "password"
+                   :label "Password"}]
+      [:wun/Button {:on-press {:intent :wun.forms/submit
+                               :params {:form :auth/sign-in}}}
+       (if (forms/submitting? state :auth/sign-in) "Signing in..." "Sign in")]])})
+```
+
+`:wun/Field` is wired internally to dispatch `:wun.forms/change` on
+input and `:wun.forms/touch` on blur; field-level errors render below
+the input only after first touch.
+
+## Framework intents
+
+| intent              | params                          | what it does                                    |
+|---------------------|---------------------------------|-------------------------------------------------|
+| `:wun.forms/change` | `{:form :field :value}`         | Set field value, mark touched, clear field error. |
+| `:wun.forms/touch`  | `{:form :field}`                | Mark field touched (typically on blur).         |
+| `:wun.forms/reset`  | `{:form}`                       | Restore the form to its empty state.            |
+| `:wun.forms/submit` | `{:form}`                       | Validate, run handler, merge outcome.           |
+
+All four are pure morphs on `wun.forms/*` helpers; they run
+identically on server and client so optimistic UI feels instant
+even when the server is busy.
+
+## File uploads
+
+`:wun/FileInput` triggers a multipart-shaped raw-body POST to
+`/upload`. The server reads in 16 KB chunks, writes to a configured
+storage directory, and emits a progress patch every 256 KB by
+default — bound to the conn's `:uploads` state slice so a progress
+bar stays in sync without any extra wiring.
+
+```clojure
+[:wun/Form {:id :media/upload}
+ [:wun/FileInput {:form :media/upload :field :avatar
+                  :accept "image/*"}]
+ [:wun/Button {:on-press {:intent :wun.forms/submit
+                          :params {:form :media/upload}}}
+  "Save"]]
+```
+
+Upload entry shape:
+
+```clojure
+{:upload-id  "u-7f3a"
+ :form       :media/upload
+ :field      :avatar
+ :filename   "photo.jpg"
+ :content-type "image/jpeg"
+ :size       128440
+ :received   72048           ;; updates as bytes flow
+ :status     :uploading      ;; :queued :uploading :complete :errored
+ :url        nil             ;; set on :complete
+ :error      nil}            ;; set on :errored
+```
+
+### Configuring uploads
+
+```clojure
+(require '[wun.server.upload :as upload])
+
+(upload/configure!
+ {:upload-dir              "/var/data/wun-uploads"
+  :max-size-bytes          (* 50 1024 1024)
+  :progress-interval-bytes (* 128 1024)
+  ;; Override the public URL for off-host storage (S3, R2). The
+  ;; `commit-fn` is called after the file lands on local disk;
+  ;; return the URL the client should hold onto.
+  :commit-fn (fn [entry file]
+               (s3/upload-file! "uploads-bucket"
+                                (str "u/" (:upload-id entry))
+                                file)
+               (str "https://cdn.example.com/u/" (:upload-id entry)))})
+```
+
+Env-var fallback: `WUN_UPLOAD_DIR` for the staging directory.
+
+### Required upload headers
+
+```
+X-Wun-Conn-ID:    <conn-id from the SSE handshake>
+X-Wun-Upload-ID:  <client-generated UUID>
+X-Wun-Filename:   photo.jpg
+X-Wun-Size:       128440          (optional; enables progress %)
+X-Wun-Form:       media/upload    (optional)
+X-Wun-Field:      avatar          (optional)
+X-Wun-CSRF:       <token issued on the SSE connect frame>
+Content-Type:     image/jpeg
+```
+
+The web client wires all of these automatically when the user picks
+a file via `:wun/FileInput`.
+
+<Aside type="caution" title="No multipart parser">
+Wun deliberately uses raw-body POSTs instead of `multipart/form-data`.
+Streaming progress falls out naturally; Pedestal's body-params
+multipart middleware would buffer each part to a temp file and
+collapse the progress signal. If you need true multipart for some
+non-Wun client, route those uploads through a separate handler.
+</Aside>
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Intents"            href="/concepts/intents/" />
+  <LinkCard title="Theme primitives"   href="/concepts/theme/" />
+  <LinkCard title="Security"           href="/concepts/security/" />
+</CardGrid>

@@ -32,6 +32,11 @@ plus a server-side HTML mapping for WebFrame fallback.
 | `:wun/Spacer`        | Empty space. `:size px`.                                    |
 | `:wun/List`          | List container.                                              |
 | `:wun/ScrollView`    | Scrollable region. `:direction :vertical/:horizontal`.       |
+| `:wun/Skeleton`      | Loading-state placeholder. `:width :height` (CSS values).    |
+| `:wun/Form`          | `<form>` wrapper. `:id` (form id used by `:wun.forms/*` intents). |
+| `:wun/Field`         | Bound input. `:form :name :type :label :placeholder`.        |
+| `:wun/FileInput`     | File picker that triggers a `/upload` POST. `:form :field :accept :multiple`. |
+| `:wun/ErrorBoundary` | Surfaced when a screen render throws. `:reason` (string).    |
 | `:wun/WebFrame`      | Capability fallback. `:src :missing :reason`.                |
 
 ## A foundational binding

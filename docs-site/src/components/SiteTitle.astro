@@ -1,0 +1,29 @@
+---
+/**
+ * Header SiteTitle override. Renders Wun's mark + name like the
+ * Starlight default, but appends a small in-header nav with a
+ * "Docs" link that goes to the entry-point concept page. The
+ * splash homepage is `template: splash` and doesn't show the
+ * sidebar at all, so without this link there's no visible way to
+ * get from the landing page into the documentation.
+ */
+
+import config from "virtual:starlight/user-config";
+import wunMark from "../assets/wun-mark.svg";
+import { withBase } from "../utils/base.mjs";
+
+const homeHref = withBase("/");
+const docsHref = withBase("/concepts/sdui/");
+---
+
+<a href={homeHref} class="wun-site-title" rel="home">
+  <img class="wun-site-title__mark" src={wunMark.src} alt="" width="32" height="32" />
+  <span class="wun-site-title__name" translate="no">{config.title}</span>
+</a>
+
+<nav class="wun-header-nav" aria-label="Primary">
+  <span class="wun-header-nav__sep" aria-hidden="true"></span>
+  <a class="wun-header-nav__link" href={docsHref}>Docs</a>
+  <a class="wun-header-nav__link" href={withBase("/getting-started/install/")}>Install</a>
+  <a class="wun-header-nav__link" href={withBase("/reference/cli/")}>CLI</a>
+</nav>

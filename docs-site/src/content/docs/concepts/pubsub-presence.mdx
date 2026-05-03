@@ -1,0 +1,150 @@
+---
+title: PubSub & presence
+description: Cross-connection broadcast and Phoenix-Presence-style rolls, both pluggable for Redis / NATS.
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+> **TL;DR.** `wun.server.pubsub` is a tiny `Bus` protocol with an
+> in-process atom-of-subscribers default. `wun.server.presence`
+> layers per-topic `{conn-id → meta}` rolls on top with auto-cleanup
+> on disconnect. `wun.server.broadcast` is the convenience layer
+> that fuses both with per-conn morph + re-broadcast — the pattern
+> 90% of cross-connection use cases want.
+
+## Why a separate primitive
+
+Wun's per-conn state model is intentional: most state is per-user,
+and a "broadcast to everyone" affordance encourages global atom
+sprawl. But cross-connection messages are the right shape for chat
+rooms, collaborative dashboards, presence indicators, live metrics.
+PubSub is opt-in; apps that don't need it pay nothing for it.
+
+## The bus
+
+```clojure
+(require '[wun.server.pubsub :as pubsub])
+
+;; Subscribe -- returns a token for unsubscribe.
+(def tok (pubsub/subscribe!
+          :feed/main
+          (fn [topic msg] (println topic msg))))
+
+;; Publish synchronously -- returns the number of subscribers.
+(pubsub/publish! :feed/main {:hi true})
+;;=> 1
+
+;; Unsubscribe.
+(pubsub/unsubscribe! tok)
+```
+
+Subscribers run on the publisher's thread; expensive work belongs
+on a separate thread the subscriber spawns. Failed subscribers are
+caught and logged so one bad subscriber can't take the bus down.
+
+## Pluggable backend
+
+The default `InProcessBus` is perfect for single-process deploys.
+Multi-replica deploys plug a `Bus`-protocol-implementing backend
+(Redis pub/sub, NATS, SQS, Postgres LISTEN/NOTIFY) without touching
+framework code:
+
+```clojure
+(defrecord RedisBus [conn]
+  pubsub/Bus
+  (-subscribe   [_ topic f]      ...)
+  (-unsubscribe [_ token]        ...)
+  (-publish     [_ topic payload] ...)
+  (-subscribers [_ topic]        ...)
+  (-clear       [_]              ...))
+
+(pubsub/set-bus! (->RedisBus my-redis-conn))
+```
+
+## Presence
+
+Per-topic `{conn-id → meta}` rolls with deterministic join / leave
+broadcasts. The framework auto-cleans up on disconnect (both inline
+in the eviction path and on the GC tick), so stale entries are
+impossible.
+
+```clojure
+(require '[wun.server.presence :as p])
+
+(p/join! :room/lobby conn-id {:user-id 7 :name "Aaron"})
+;; broadcasts {:event :join :conn-id ... :meta ... :roll {...}} on :room/lobby
+
+(p/list-topic :room/lobby)
+;;=> {"cid-A" {:user-id 7 :name "Aaron"}}
+
+(p/leave! :room/lobby conn-id)
+;; broadcasts {:event :leave :conn-id ... :roll {...}}
+
+(p/topics-of conn-id)            ;; -> #{:room/lobby ...}
+(p/count-topic :room/lobby)      ;; -> 1
+```
+
+## The convenience layer
+
+`wun.server.broadcast` fuses pubsub + per-conn morph + re-broadcast
+— the pattern most cross-conn use cases want:
+
+```clojure
+(require '[wun.server.broadcast :as bc])
+
+;; At connect, register interest.
+(definent :chat/join
+  {:params [:map [:room :keyword]]
+   :morph
+   (fn [state {:keys [room]}]
+     ;; Subscribe THIS conn to the room. The morph-fn applies
+     ;; per-conn each time someone publishes.
+     (bc/subscribe!
+       room
+       (-> state :session :conn-id)
+       (fn [s msg]
+         (update-in s [:rooms room :messages] (fnil conj []) msg)))
+     state)})
+
+;; Anywhere -- another intent, a server-only background job, an
+;; admin command -- publish to fan out.
+(definent :chat/say
+  {:params [:map [:room :keyword] [:text :string]]
+   :morph
+   (fn [state {:keys [room text]}]
+     (bc/publish! room {:text text :from (-> state :session :user-id)})
+     state)})
+```
+
+Every subscribed conn applies the morph to its own state slice and
+the framework triggers a fresh patch envelope so the UI updates.
+The publisher's broadcast happens via the standard intent
+resolution path.
+
+## Telemetry
+
+PubSub + presence emit events through `wun.server.telemetry`:
+
+| event                  | attrs                                |
+|------------------------|--------------------------------------|
+| `:wun/pubsub.publish`  | `{:topic :n-subscribers}`            |
+| `:wun/presence.join`   | `{:topic :conn-id}`                  |
+| `:wun/presence.leave`  | `{:topic :conn-id}`                  |
+
+Wire them into Prometheus / OpenTelemetry the same way you wire
+intent metrics — see [Observability](/architecture/observability/).
+
+<Aside type="tip" title="Topic naming">
+Namespace your topics. `:chat-room/123` rather than `:room-123`,
+`:dashboard.team/7` rather than `:t7-dash`. The bus is an open map
+so collisions are silent; namespaces make the Wun-vs-app split
+visible at a glance.
+</Aside>
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Intents"     href="/concepts/intents/" />
+  <LinkCard title="Wire format" href="/concepts/wire-format/" />
+  <LinkCard title="Security"    href="/concepts/security/" />
+</CardGrid>

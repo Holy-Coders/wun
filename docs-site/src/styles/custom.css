@@ -456,6 +456,227 @@ table {
 }
 
 /* =========================================================
+ * 14b. .wun-trio (same Hiccup → three native renders triptych)
+ * ========================================================= */
+.wun-trio {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 2rem 0 2.5rem;
+  padding: 0;
+}
+@media (min-width: 760px) {
+  .wun-trio { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.4rem; }
+}
+
+.wun-trio__col {
+  border: 1px solid var(--wun-feature-bord);
+  border-radius: 14px;
+  background: var(--wun-feature-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 220ms ease, border-color 220ms ease,
+              box-shadow 220ms ease;
+}
+.wun-trio__col:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--sl-color-accent) 50%, transparent);
+  box-shadow: 0 18px 36px -28px rgba(10, 102, 194, 0.55);
+}
+
+/* Top chrome -- styled to evoke each platform without faking a screenshot. */
+.wun-trio__chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--wun-feature-bord);
+  font-size: 0.78rem;
+  font-family: var(--sl-font-mono);
+  color: var(--sl-color-gray-3);
+  min-height: 2.1rem;
+}
+.wun-trio__chrome--web .wun-trio__dot {
+  width: 0.55rem; height: 0.55rem; border-radius: 50%;
+  background: var(--sl-color-gray-4);
+}
+.wun-trio__chrome--web .wun-trio__dot:nth-child(1) { background: #ff5f57; }
+.wun-trio__chrome--web .wun-trio__dot:nth-child(2) { background: #febc2e; }
+.wun-trio__chrome--web .wun-trio__dot:nth-child(3) { background: #28c840; }
+.wun-trio__url {
+  margin-left: 0.6rem;
+  letter-spacing: 0.02em;
+}
+.wun-trio__chrome--ios {
+  background: linear-gradient(180deg,
+                color-mix(in srgb, var(--sl-color-accent) 14%, transparent) 0%,
+                rgba(255,255,255,0.04) 100%);
+  justify-content: space-between;
+  padding: 0.45rem 1rem;
+}
+.wun-trio__time { font-weight: 700; color: var(--sl-color-text); }
+.wun-trio__notch {
+  width: 28%;
+  height: 0.6rem;
+  border-radius: 0 0 0.6rem 0.6rem;
+  background: rgba(0,0,0,0.45);
+}
+.wun-trio__chrome--android {
+  background: linear-gradient(180deg,
+                color-mix(in srgb, #1b6c3a 22%, transparent) 0%,
+                rgba(255,255,255,0.03) 100%);
+  padding: 0.6rem 0.85rem;
+}
+.wun-trio__appbar {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--sl-color-text);
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+/* Inner stage (the actual rendered content). */
+.wun-trio__stage {
+  flex: 1;
+  padding: 1.4rem 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.wun-trio__stage--ios {
+  background: radial-gradient(120% 80% at 50% 0%,
+                color-mix(in srgb, var(--sl-color-accent) 8%, transparent) 0%,
+                transparent 100%);
+}
+.wun-trio__stage--android {
+  background: radial-gradient(120% 80% at 50% 100%,
+                color-mix(in srgb, #1b6c3a 12%, transparent) 0%,
+                transparent 100%);
+}
+
+.wun-trio__h {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-2);
+}
+.wun-trio__h--ios { letter-spacing: -0.01em; text-transform: none; }
+.wun-trio__h--android { font-weight: 800; letter-spacing: 0.06em; }
+
+.wun-trio__count {
+  font-family: var(--sl-font-mono);
+  font-size: clamp(2.4rem, 4vw + 1rem, 3.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0.2rem 0 0.4rem;
+  color: var(--sl-color-text);
+}
+.wun-trio__count--ios     { font-family: var(--sl-font); font-weight: 700; }
+.wun-trio__count--android { font-family: var(--sl-font); font-weight: 900; }
+
+.wun-trio__row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.wun-trio__btn {
+  font: inherit;
+  font-weight: 700;
+  border: 0;
+  cursor: default;            /* purely decorative */
+  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  background: transparent;
+  color: var(--sl-color-text);
+}
+.wun-trio__btn--web {
+  border: 1px solid var(--sl-color-gray-4);
+  background: var(--sl-color-bg);
+}
+.wun-trio__btn--ios {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sl-color-accent) 16%, transparent);
+  color: var(--sl-color-accent);
+  font-weight: 600;
+}
+.wun-trio__btn--android {
+  border-radius: 4px;
+  background: #1b6c3a;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.65rem 1.2rem;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.25);
+}
+
+.wun-trio__label {
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  border-top: 1px solid var(--wun-feature-bord);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-2);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* =========================================================
+ * 14c. Site title with a Docs nav link
+ * ========================================================= */
+.wun-site-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+.wun-site-title__mark {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: block;
+}
+.wun-site-title__name {
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: inherit;
+}
+.wun-header-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.6rem;
+}
+.wun-header-nav__sep {
+  width: 1px;
+  height: 1.1rem;
+  background: var(--sl-color-gray-5);
+  display: inline-block;
+}
+.wun-header-nav__link {
+  font-size: 0.92rem;
+  color: var(--sl-color-gray-2);
+  text-decoration: none;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  transition: color 180ms ease, background 180ms ease;
+}
+.wun-header-nav__link:hover {
+  color: var(--sl-color-text);
+  background: color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+}
+
+/* =========================================================
  * 14. .wun-term decorative terminal
  * ========================================================= */
 .wun-term {

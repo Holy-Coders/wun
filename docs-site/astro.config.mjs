@@ -82,9 +82,12 @@ export default defineConfig({
       logo: { src: "./src/assets/wun-mark.svg", replacesTitle: false },
       customCss: ["./src/styles/custom.css"],
       // Override the upstream Hero so frontmatter actions get
-      // base-prefixed (Starlight 0.30 does not).
+      // base-prefixed (Starlight 0.30 does not), and the SiteTitle
+      // so the splash page (which hides the sidebar) still shows
+      // a top-bar nav with a Docs / Install / CLI link.
       components: {
-        Hero: "./src/components/StarlightHero.astro",
+        Hero:      "./src/components/StarlightHero.astro",
+        SiteTitle: "./src/components/SiteTitle.astro",
       },
       social: {
         github: "https://github.com/Holy-Coders/wun",
@@ -106,8 +109,12 @@ export default defineConfig({
             { label: "Components",         slug: "concepts/components" },
             { label: "Screens",            slug: "concepts/screens" },
             { label: "Intents",            slug: "concepts/intents" },
+            { label: "Forms & uploads",    slug: "concepts/forms" },
+            { label: "Theme primitives",   slug: "concepts/theme" },
+            { label: "PubSub & presence",  slug: "concepts/pubsub-presence" },
             { label: "Capability negotiation", slug: "concepts/capabilities" },
             { label: "Wire format",        slug: "concepts/wire-format" },
+            { label: "Security",           slug: "concepts/security" },
           ],
         },
         { label: "Architecture",
@@ -115,6 +122,7 @@ export default defineConfig({
             { label: "Head & hot-cache",   slug: "architecture/head-and-cache" },
             { label: "Path configuration", slug: "architecture/path-config" },
             { label: "Reconnect & retry",  slug: "architecture/reconnect" },
+            { label: "Observability",      slug: "architecture/observability" },
           ],
         },
         { label: "Reference",

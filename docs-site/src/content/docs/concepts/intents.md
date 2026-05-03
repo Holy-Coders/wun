@@ -84,7 +84,12 @@ server already processed is idempotent.
 
 ## Framework intents
 
-The framework reserves three intent keywords for navigation:
+The framework reserves a handful of intent keywords for built-in
+operations. They're registered through the same `definent` API as
+your code; user intents and framework intents are indistinguishable
+to the runtime.
+
+### Navigation
 
 | intent           | does                                                              |
 |------------------|-------------------------------------------------------------------|
@@ -92,8 +97,21 @@ The framework reserves three intent keywords for navigation:
 | `:wun/pop`       | Pop the top of the connection's stack.                            |
 | `:wun/replace`   | Replace the top of stack. Same params shape as `:wun/navigate`.   |
 
-These bypass the morph registry — they mutate per-connection state
-(the screen-stack) instead of global app state.
+Navigation intents bypass the morph registry — they mutate
+per-connection state (the screen-stack) instead of an app-state slice.
+
+### Forms
+
+| intent              | does                                                              |
+|---------------------|-------------------------------------------------------------------|
+| `:wun.forms/change` | Set a field's value, mark it touched, clear its error.            |
+| `:wun.forms/touch`  | Mark a field touched (typically on blur).                         |
+| `:wun.forms/reset`  | Reset a form to its empty state.                                  |
+| `:wun.forms/submit` | Validate, run handler, merge outcome. Params: `{:form :form-id}`. |
+
+`:wun/Field` wires `change` + `touch` automatically; `:wun/Form`'s
+`<form>` element fires `submit` on Enter / button-click. See
+[Forms & uploads](/concepts/forms/) for the full shape.
 
 ## Rules
 
