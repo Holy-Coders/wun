@@ -1,11 +1,19 @@
 (ns wun.web.core
   "Wun web entry point. Subscribes to the server's SSE patch stream,
-   delegates each envelope to `wun.web.intent-bus`, and renders
-   `display-tree` through reagent. The optimistic dispatch + reconcile
-   machinery lives in `intent-bus`. Side-effecting requires below
-   populate the open registries on load."
+   delegates each envelope to `wun.web.intent-bus`, and renders the
+   `display-tree` atom through Replicant. The optimistic dispatch +
+   reconcile machinery lives in `intent-bus`. Side-effecting requires
+   below populate the open registries on load.
+
+   Phase 3 swap: was Reagent + React-DOM. Now it's Replicant -- a
+   pure-Clojure VDOM with zero JS dependencies. The hiccup the
+   renderers produce is unchanged; what changed is the rendering
+   substrate (replicant.dom/render!) and the reactivity model (an
+   atom watcher pushes a new tree into Replicant on every change to
+   `display-tree` rather than relying on reagent's auto-deref-tracking
+   reactive atoms)."
   (:require [cognitect.transit  :as transit]
-            [reagent.dom.client :as rdc]
+            [replicant.dom      :as r]
             [wun.capabilities   :as capabilities]
             [wun.components     :as components]
             [wun.web.intent-bus :as bus]
@@ -23,6 +31,10 @@
 (def server-base
   (or (some-> js/window .-WUN_SERVER) "http://localhost:8080"))
 
+;; Wire envelope versions this client knows how to render.
+(def supported-envelope-versions [1 2])
+(def preferred-envelope-version 2)
+
 ;; ---------------------------------------------------------------------------
 ;; Transit reader
 
@@ -31,8 +43,8 @@
 (defn- str->t [s] (transit/read reader s))
 
 ;; ---------------------------------------------------------------------------
-;; Status indicator (outside the reagent root, so we don't fight React over
-;; the #status div)
+;; Status indicator (outside the Replicant root, so we don't fight it
+;; over ownership of the #status div)
 
 (defn- ^js status-el [] (.getElementById js/document "status"))
 
@@ -52,11 +64,29 @@
       (.remove cl "wun-offline"))))
 
 ;; ---------------------------------------------------------------------------
-;; Top-level reagent component. Derefs display-tree (a reagent atom)
-;; so reagent re-renders on every change.
+;; Replicant render. We render the current `display-tree` directly --
+;; renderers/render-node converts Wun Hiccup (`:wun/Stack`, ...) into
+;; plain HTML Hiccup that Replicant's renderer understands.
 
-(defn app []
-  (renderers/render-node @bus/display-tree))
+(defonce ^:private root-el (atom nil))
+
+(defn- render! []
+  (when-let [el @root-el]
+    (let [tree (or @bus/display-tree
+                   ;; Cold-start placeholder while we wait for the SSE
+                   ;; stream to deliver the first frame.
+                   [:div.wun-bootstrapping {} ""])]
+      (r/render! el (renderers/render-node tree)))))
+
+;; The bus' display-tree atom drives all renders. We add a single
+;; watcher; recompute! pushes a new value, the watcher fires, and
+;; Replicant diffs against its prior internal state to emit minimal
+;; DOM ops. No reactive deref tree like reagent's r/atom, no
+;; unnecessary subscriptions.
+(defonce ^:private display-tree-watch
+  (delay
+    (add-watch bus/display-tree ::render
+               (fn [_ _ _ _] (render!)))))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE wiring
@@ -68,6 +98,13 @@
 ;; connection from a reconnect-after-drop, since EventSource resets
 ;; was-connected? to false on every error.
 (defonce ^:private ever-connected? (atom false))
+
+;; Heartbeat watchdog: server emits `:ping` envelopes on a separate
+;; SSE event name; we track the last-received timestamp and force a
+;; manual reconnect if it goes stale (proxies that silently kill the
+;; connection without surfacing the close to EventSource).
+(defonce ^:private last-frame-ms (atom nil))
+(def ^:private heartbeat-watchdog-ms 60000)
 
 (defn- current-caps
   "Build the capability map from registered web renderers; the version
@@ -91,23 +128,53 @@
   (let [path  (or (some-> js/window .-location .-pathname) "/")
         token (persisted-session-token)]
     (str server-base
-         "/wun?caps=" (js/encodeURIComponent
-                       (capabilities/serialize (current-caps)))
-         "&path="    (js/encodeURIComponent path)
+         "/wun?caps="     (js/encodeURIComponent
+                           (capabilities/serialize (current-caps)))
+         "&path="         (js/encodeURIComponent path)
+         "&envelope="     preferred-envelope-version
          (when token (str "&session-token=" (js/encodeURIComponent token))))))
+
+(declare start-sse!)
+
+(defn- handle-patch-event! [data]
+  (reset! last-frame-ms (.getTime (js/Date.)))
+  (when-not @was-connected?
+    (js/console.info "wun: SSE connected"))
+  (reset! was-connected? true)
+  (reset! ever-connected? true)
+  (set-status! "connected")
+  (set-offline! false)
+  (bus/apply-envelope! (str->t data)))
+
+(defn- handle-heartbeat-event! [_]
+  ;; Heartbeat envelopes are JSON-encoded `{:type :ping :ts ms}` --
+  ;; we just need the side effect of resetting the watchdog timer.
+  ;; We don't actually need to parse them; the SSE event firing
+  ;; means we're alive.
+  (reset! last-frame-ms (.getTime (js/Date.))))
+
+(defn- watchdog-tick! []
+  (when-let [t @last-frame-ms]
+    (let [age (- (.getTime (js/Date.)) t)]
+      (when (> age heartbeat-watchdog-ms)
+        (js/console.warn "wun: no frame in" age "ms; forcing reconnect")
+        (reset! last-frame-ms nil)
+        (start-sse!)))))
+
+(defonce ^:private watchdog-handle (atom nil))
+
+(defn- start-watchdog! []
+  (when-let [h @watchdog-handle] (js/clearInterval h))
+  (reset! watchdog-handle
+          (js/setInterval watchdog-tick! 5000)))
 
 (defn- start-sse! []
   (when-let [old @es] (.close old))
   (let [src (js/EventSource. (caps-url))]
     (.addEventListener src "patch"
-      (fn [ev]
-        (when-not @was-connected?
-          (js/console.info "wun: SSE connected"))
-        (reset! was-connected? true)
-        (reset! ever-connected? true)
-        (set-status! "connected")
-        (set-offline! false)
-        (bus/apply-envelope! (str->t (.-data ev)))))
+      (fn [ev] (handle-patch-event! (.-data ev))))
+    (.addEventListener src "heartbeat"
+      (fn [ev] (handle-heartbeat-event! (.-data ev))))
     (.addEventListener src "open"
       (fn [_]
         (let [reconnect? @ever-connected?]
@@ -115,6 +182,7 @@
             (js/console.info "wun: SSE open"))
           (set-status! "connected")
           (set-offline! false)
+          (reset! last-frame-ms (.getTime (js/Date.)))
           ;; On reconnect, replay any still-pending intents the server
           ;; may have missed during the outage. Server-side dedup
           ;; (keyed by intent id) makes this safe.
@@ -129,14 +197,14 @@
     (reset! es src)))
 
 ;; ---------------------------------------------------------------------------
-;; Reagent mount
-
-(defonce ^:private root (atom nil))
+;; Replicant mount
 
 (defn- mount! []
-  (when-not @root
-    (reset! root (rdc/create-root (.getElementById js/document "app"))))
-  (rdc/render @root [app]))
+  (when-not @root-el
+    (reset! root-el (.getElementById js/document "app")))
+  ;; Force the watcher delay so it actually wires the atom -> DOM hook.
+  @display-tree-watch
+  (render!))
 
 ;; ---------------------------------------------------------------------------
 ;; Entry points
@@ -149,6 +217,7 @@
   (bus/hydrate-from-cache!)
   (bus/start-pending-gc!)
   (bus/install-popstate-handler!)
+  (start-watchdog!)
   (start-sse!))
 
 (defn ^:export after-reload []

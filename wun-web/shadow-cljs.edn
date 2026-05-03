@@ -1,6 +1,11 @@
 ;; shadow-cljs config. Pulls library deps from deps.edn (`:deps true`).
+;;
+;; Two builds:
+;;   :app        -- the browser bundle that mounts at #app
+;;   :node-test  -- a Node.js bundle that runs `cljs.test` for the
+;;                  cljs-side suite. Invoke via `npm test`.
 
-{:source-paths ["src"]
+{:source-paths ["src" "test"]
  :deps         true
  :dev-http     {8081 "public"}
 
@@ -10,4 +15,10 @@
    :output-dir "public/js"
    :asset-path "/js"
    :modules    {:main {:init-fn wun.web.core/init}}
-   :devtools   {:after-load wun.web.core/after-reload}}}}
+   :devtools   {:after-load wun.web.core/after-reload}}
+
+  :node-test
+  {:target     :node-test
+   :output-to  "out/node-tests.js"
+   :ns-regexp  "-test$"
+   :autorun    false}}}

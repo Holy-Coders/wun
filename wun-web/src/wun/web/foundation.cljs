@@ -1,7 +1,12 @@
 (ns wun.web.foundation
-  "Web (reagent) renderers for the foundational `:wun/*` vocabulary.
+  "Web (Replicant) renderers for the foundational `:wun/*` vocabulary.
    User apps register their own renderers the same way -- the registry
-   doesn't distinguish framework from user code."
+   doesn't distinguish framework from user code.
+
+   Phase 3 swap: same hiccup output as before, but event handlers
+   move from Reagent's `:on-click` directly-attached-fn to Replicant's
+   `:on {:click <fn>}` map -- Replicant's documented idiom and the
+   only one its renderer recognises."
   (:require [wun.web.renderers  :as r]
             [wun.web.intent-bus :as bus]))
 
@@ -36,11 +41,11 @@
 (r/register! :wun/Button
   (fn [{:keys [on-press]} children]
     (into [:button.wun-button
-           {:type     "button"
-            :on-click (when on-press
-                        (fn [_]
-                          (bus/dispatch! (:intent on-press)
-                                         (:params on-press))))}]
+           (cond-> {:type "button"}
+             on-press (assoc :on
+                             {:click (fn [_]
+                                       (bus/dispatch! (:intent on-press)
+                                                      (:params on-press)))}))]
           children)))
 
 ;; --- 6.B primitives --------------------------------------------------------
@@ -57,15 +62,15 @@
 (r/register! :wun/Link
   (fn [{:keys [href on-press]} children]
     (into [:a.wun-link
-           {:href     (or href "#")
-            :on-click (when on-press
-                        (fn [ev]
-                          (.preventDefault ev)
-                          (bus/dispatch! (:intent on-press)
-                                         (:params on-press))))
-            :style    {:color           "#0a66c2"
-                       :text-decoration "none"
-                       :border-bottom   "1px dotted currentColor"}}]
+           (cond-> {:href  (or href "#")
+                    :style {:color           "#0a66c2"
+                            :text-decoration "none"
+                            :border-bottom   "1px dotted currentColor"}}
+             on-press (assoc :on
+                             {:click (fn [ev]
+                                       (.preventDefault ev)
+                                       (bus/dispatch! (:intent on-press)
+                                                      (:params on-press)))}))]
           children)))
 
 (r/register! :wun/Switch
@@ -76,13 +81,14 @@
               :gap           "6px"
               :cursor        (if on-toggle "pointer" "default")}}
      [:input
-      {:type      "checkbox"
-       :checked   (boolean value)
-       :on-change (when on-toggle
-                    (fn [ev]
-                      (let [v (.-checked (.-target ev))]
-                        (bus/dispatch! (:intent on-toggle)
-                                       (assoc (:params on-toggle) :value v)))))}]]))
+      (cond-> {:type    "checkbox"
+               :checked (boolean value)}
+        on-toggle (assoc :on
+                         {:change (fn [ev]
+                                    (let [v (.-checked (.-target ev))]
+                                      (bus/dispatch! (:intent on-toggle)
+                                                     (assoc (:params on-toggle)
+                                                            :value v))))}))]]))
 
 (r/register! :wun/Badge
   (fn [{:keys [tone]} children]
@@ -107,12 +113,29 @@
     (let [tag (case level 1 :h1 2 :h2 3 :h3 4 :h4 :h2)]
       (into [tag {:class "wun-heading" :style {:margin "0"}}] children))))
 
+;; :wun/Input -- text input bound through an intent. Two-way data flow
+;; uses optimistic morphs: the on-input handler dispatches a value-change
+;; intent; the local morph reflects it instantly while the server's
+;; authoritative state catches up.
+
+(r/register! :wun/Input
+  (fn [{:keys [value placeholder on-change]} _children]
+    [:input.wun-input
+     (cond-> {:type "text"
+              :value (or value "")
+              :placeholder placeholder}
+       on-change (assoc :on
+                        {:input (fn [ev]
+                                  (let [v (.-value (.-target ev))]
+                                    (bus/dispatch! (:intent on-change)
+                                                   (assoc (:params on-change)
+                                                          :value v))))}))]))
+
 ;; :wun/WebFrame -- the capability fallback. The server emits this in
 ;; place of any subtree containing components the client doesn't
-;; advertise. Phase 2 (iOS / Android) renders this as a real
-;; Hotwire-Native iframe; on web today it's a styled placeholder
-;; since web is the one platform that can render everything in the
-;; vocabulary anyway.
+;; advertise. Phase 6 lands real Hotwire Native iOS / Android WebView
+;; rendering; on web today it's a styled placeholder since web is the
+;; one platform that can render everything in the vocabulary anyway.
 
 (r/register! :wun/WebFrame
   (fn [{:keys [src missing reason]} _children]
@@ -129,3 +152,18 @@
        [:span " — " reason])
      (when src
        [:span " — src=" [:code src]])]))
+
+;; :wun/Skeleton -- baseline loading state primitive. Apps render it
+;; while waiting for the first SSE frame, or as a placeholder for
+;; subtrees the server hasn't computed yet.
+
+(r/register! :wun/Skeleton
+  (fn [{:keys [width height]} _children]
+    [:div.wun-skeleton
+     {:style {:display       "inline-block"
+              :width         (or width "100%")
+              :height        (or height "12px")
+              :border-radius "4px"
+              :background    "linear-gradient(90deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.06) 100%)"
+              :background-size "200% 100%"
+              :animation     "wun-skeleton 1.4s ease-in-out infinite"}}]))

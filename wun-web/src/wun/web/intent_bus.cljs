@@ -18,6 +18,12 @@
                          pred-state = (reduce morph confirmed-state
                                        pending).
 
+   Phase 3 swap: was reagent atoms + reagent's r/atom/deref reactivity.
+   Now it's plain ClojureScript atoms with an explicit `notify-render!`
+   hook the core ns wires up to Replicant. The benefit: no React, no
+   reagent runtime, smaller bundle. The cost: we re-render on demand
+   instead of on auto-subscription.
+
    Dispatch path:
      1. Append {:id :intent :params :created-at} to pending.
      2. Recompute display-tree (predicted state -> render).
@@ -43,7 +49,7 @@
    with fetch's promise rejection, but possible) would otherwise
    leave a permanent ghost in pending; the TTL bounds the damage."
   (:require [cognitect.transit  :as transit]
-            [reagent.core       :as r]
+            [goog.object        :as gobject]
             [wun.capabilities   :as capabilities]
             [wun.components     :as components]
             [wun.diff           :as diff]
@@ -71,15 +77,22 @@
 (defonce confirmed-state (atom nil))
 (defonce confirmed-tree  (atom nil))
 (defonce pending         (atom []))
-;; display-tree is a reagent atom so the top-level component can deref
-;; it reactively; reagent re-renders only when this changes.
-(defonce display-tree    (r/atom nil))
+;; display-tree is a plain atom; the core ns adds a watcher that calls
+;; Replicant's render! whenever it changes. There is intentionally no
+;; reactive deref happening anywhere -- explicit `recompute!` is the
+;; single edge that pushes a new tree into Replicant.
+(defonce display-tree    (atom nil))
 
 ;; Server-assigned connection id. The first SSE envelope echoes one;
 ;; subsequent /intent POSTs include it so framework intents
 ;; (`:wun/navigate`, `:wun/pop`) can be routed to *this* connection's
 ;; screen-stack rather than to all connections.
 (defonce conn-id         (atom nil))
+
+;; CSRF token bound to this conn / session, issued on the first SSE
+;; envelope. Echoed on /intent POSTs as the `X-Wun-CSRF` header so
+;; the server's CSRF interceptor accepts the request.
+(defonce csrf-token      (atom nil))
 
 ;; The connection's current screen-stack (top is the visible screen).
 ;; The server is the source of truth: every envelope that mutates the
@@ -88,7 +101,7 @@
 ;; before the connect frame -- it falls back to the path lookup of
 ;; the current URL and finally `:counter/main`.
 (defonce screen-stack
-  (r/atom
+  (atom
    [(or (some-> js/window .-location .-pathname screens/lookup-by-path)
         :counter/main)]))
 
@@ -96,8 +109,7 @@
 ;; screen-stack. Web treats both as a regular page swap today, but
 ;; native clients use it to decide sheet-vs-push. We mirror it here
 ;; so the wire stays uniform across platforms.
-(defonce presentations
-  (r/atom [:push]))
+(defonce presentations (atom [:push]))
 
 (defn current-screen-key [] (peek @screen-stack))
 
@@ -142,14 +154,21 @@
 
 (defn- t->str [v] (transit/write writer v))
 
+(defn- build-headers []
+  (let [h #js {"Content-Type" "application/transit+json"}]
+    (when-let [tok @csrf-token]
+      (gobject/set h "X-Wun-CSRF" tok))
+    h))
+
 (defn- post-intent! [intent params id]
   (-> (js/fetch (str server-base "/intent")
                 #js {:method  "POST"
-                     :headers #js {"Content-Type" "application/transit+json"}
+                     :headers (build-headers)
                      :body    (t->str (cond-> {:intent intent
                                                :params (or params {})
                                                :id     id}
-                                        @conn-id (assoc :conn-id @conn-id)))})
+                                        @conn-id    (assoc :conn-id @conn-id)
+                                        @csrf-token (assoc :csrf-token @csrf-token)))})
       (.catch (fn [e] (js/console.error "wun: intent failed" e)))))
 
 ;; ---------------------------------------------------------------------------
@@ -256,18 +275,27 @@
 (defn apply-envelope!
   "Reconcile a server envelope: maybe-bootstrap, apply patches against
    confirmed-tree, mirror confirmed-state, drop the resolved pending
-   entry, optionally update the conn-id and screen-stack the server
-   sent for this connection, apply page meta (title / description /
-   theme-color) to the document head, sync the browser URL to the
-   visible screen, persist the snapshot to localStorage, and
-   recompute the display."
+   entry, optionally update the conn-id / csrf-token / screen-stack the
+   server sent for this connection, apply page meta (title /
+   description / theme-color) to the document head, sync the browser
+   URL to the visible screen, persist the snapshot to localStorage,
+   and recompute the display.
+
+   Heartbeat envelopes (`{:type :ping}`) are routed elsewhere; this fn
+   only handles patch envelopes."
   [{cid    :conn-id
+    csrf   :csrf-token
     stack  :screen-stack
     pres   :presentations
     meta   :meta
+    env-v  :envelope-version
+    rsync? :resync?
     :keys [patches state resolves-intent status error]}]
   (when (= status :error)
     (js/console.error "wun: server error" (clj->js error)))
+  (when rsync?
+    (js/console.info "wun: server forced snapshot resync (backpressure)")
+    (reset! pending []))
   ;; (Note: we no longer clear `pending` on bootstrap. Server-side
   ;; intent dedup makes retrying safe -- the next POSTs will either
   ;; be no-ops (because the server already processed them) or run
@@ -276,8 +304,11 @@
   (when (and (seq patches) (bootstrap-frame? patches) (seq @pending))
     (js/console.info "wun: bootstrap frame; keeping" (count @pending)
                      "pending intent(s) for retry"))
-  (when cid
-    (reset! conn-id cid))
+  (when cid (reset! conn-id cid))
+  (when csrf (reset! csrf-token csrf))
+  (when (and env-v (number? env-v) (> env-v 2))
+    (js/console.warn "wun: server envelope-version" env-v
+                     "newer than client supports; rendering may degrade"))
   (when (seq stack)
     (let [normalized (mapv #(if (string? %) (keyword %) %) stack)]
       (reset! screen-stack normalized)

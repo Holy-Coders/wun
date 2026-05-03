@@ -165,3 +165,15 @@
    :fallback :web
    :ios      "WunHeading"
    :android  "WunHeading"})
+
+;; --- Phase 3: loading-state primitive --------------------------------------
+
+(defcomponent :wun/Skeleton
+  {:since    1
+   :schema   [:map
+              [:width  {:optional true} :string]
+              [:height {:optional true} :string]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunSkeleton"
+   :android  "WunSkeleton"})
