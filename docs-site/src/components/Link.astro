@@ -1,0 +1,25 @@
+---
+/**
+ * Base-aware internal link.
+ *
+ * Starlight's <LinkCard /> and raw <a> tags pass `href` through without
+ * prefixing Astro's `base` (which is `/wun` on GitHub Pages, undefined
+ * locally). That means every absolute internal link like `/concepts/foo/`
+ * 404s in production. This component adds the base for any href that
+ * starts with `/` and leaves protocol-relative / external links alone.
+ *
+ * Usage:
+ *   <Link href="/concepts/components/">Components</Link>
+ *
+ * For Starlight LinkCards, prefer the explicit pattern:
+ *   <LinkCard href={`${import.meta.env.BASE_URL}concepts/components/`} />
+ * This file exists for plain anchors and reuse from MDX.
+ */
+
+import { withBase } from "../utils/base.mjs";
+
+const { href, ...rest } = Astro.props as { href: string; [k: string]: any };
+const isInternal = href.startsWith("/") && !href.startsWith("//");
+const finalHref = isInternal ? withBase(href) : href;
+---
+<a href={finalHref} {...rest}><slot /></a>

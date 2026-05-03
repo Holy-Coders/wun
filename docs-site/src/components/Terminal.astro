@@ -1,0 +1,30 @@
+---
+/**
+ * Terminal: stylized fake-terminal block for the landing page.
+ *
+ * This is purely decorative — Starlight already renders code via Shiki,
+ * so for *real* code you should use a fenced ``` block. Use Terminal
+ * when you want the traffic-light chrome and a one-liner that reads as
+ * a CLI flow on the marketing page.
+ *
+ * The HTML inside <slot/> is rendered as-is, so MDX can pass spans
+ * with class names for prompt / command / comment colourisation.
+ */
+const { title = "wun", lines = [] } = Astro.props as {
+  title?: string;
+  lines?: { kind: "prompt" | "out" | "cmd" | "comment"; text: string }[];
+};
+---
+<div class="wun-term" role="img" aria-label={`${title} terminal showing ${lines.length} lines`}>
+  <div class="wun-term__chrome">
+    <span class="wun-term__dot" data-c="r"></span>
+    <span class="wun-term__dot" data-c="y"></span>
+    <span class="wun-term__dot" data-c="g"></span>
+    <span class="wun-term__title">{title}</span>
+  </div>
+  <pre class="wun-term__body"><code>
+{lines.length === 0 ? <slot/> : lines.map(l => (
+  <span class={`wun-term__line wun-term__line--${l.kind}`}>{l.text}{"\n"}</span>
+))}
+  </code></pre>
+</div>

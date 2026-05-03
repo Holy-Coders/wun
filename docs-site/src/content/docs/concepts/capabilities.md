@@ -3,6 +3,12 @@ title: Capability negotiation
 description: How clients tell the server what they can render, and how WebFrame fallback works.
 ---
 
+> **TL;DR.** Native clients advertise the components they can
+> render at connect time. The server walks the rendered tree and
+> replaces anything the client doesn't know with a `:wun/WebFrame`
+> at the **smallest containing subtree**. New components ship
+> without breaking older clients.
+
 Different clients render different subsets of the component
 vocabulary. Web might not have `:myapp/RichEditor`. iOS might lag
 the latest `:wun/Switch` schema. The server has to know each
@@ -123,3 +129,12 @@ new clients that advertise `:myapp/Card@2` render natively. Once
 all clients are updated you can drop the old version's fallback
 behaviour, but the protocol-level capability check is the only
 place that needs to know.
+
+## Read next
+
+- [Component vocabulary](/reference/components/) — every `:wun/*`
+  the framework ships, with `:since` versions.
+- [Components](/concepts/components/) — declaring components and
+  registering renderers.
+- [Wire format](/concepts/wire-format/) — what goes over the SSE
+  channel after substitution.

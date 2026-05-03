@@ -3,6 +3,12 @@ title: Wire format
 description: The patch envelope, intent envelope, and Hiccup-shaped tree.
 ---
 
+> **TL;DR.** Two envelopes: a **patch envelope** (server → client,
+> SSE) carrying tree diffs + state + metadata, and an **intent
+> envelope** (client → server, POST) carrying a UUID-tagged action.
+> Tree shape is Hiccup with namespaced keywords. Transit by default,
+> JSON on `X-Wun-Format: json`.
+
 Wun's wire format is **transit-json** by default and **JSON** when
 `X-Wun-Format: json` is requested. Native clients use JSON for
 deserialisation simplicity; the web uses transit so keywords +
@@ -108,3 +114,12 @@ Bad intent params:
 
 Returned at HTTP 400 (intent endpoint) or via SSE with
 `:status :error`.
+
+## Read next
+
+- [Intents](/concepts/intents/) — the `:morph` and pending-queue
+  semantics behind the intent envelope.
+- [Capability negotiation](/concepts/capabilities/) — how the tree
+  is rewritten for each client before patches are emitted.
+- [Reconnect & retry](/architecture/reconnect/) — what the bootstrap
+  envelope looks like when the SSE stream re-opens.

@@ -1,0 +1,70 @@
+---
+/**
+ * Compare: small comparison table positioning Wun against neighbours
+ * in the SDUI / cross-platform space (LiveView, Hotwire Native, RN).
+ *
+ * Built as a real <table> for accessibility + selectability; styled
+ * as a card grid via CSS in custom.css (.wun-compare).
+ */
+const rows = [
+  {
+    capability:  "State lives on the server",
+    wun:         "Yes — single SSE channel, optimistic morphs.",
+    liveview:    "Yes — stateful socket per tab.",
+    hotwire:     "Yes — Turbo streams, server templates.",
+    rn:          "No — state is on the client.",
+  },
+  {
+    capability:  "Native widgets per platform",
+    wun:         "SwiftUI · Compose · DOM (one tree, native renderers).",
+    liveview:    "DOM only.",
+    hotwire:     "Native shell + WebView fragments.",
+    rn:          "Bridges to native, JS layer in between.",
+  },
+  {
+    capability:  "Cross-platform vocabulary",
+    wun:         "Namespaced keywords (:wun/Stack, :myapp/Card).",
+    liveview:    "HTML elements + LiveComponents.",
+    hotwire:     "Turbo Frames + Stream actions.",
+    rn:          "React components, JSX.",
+  },
+  {
+    capability:  "Forward-compat fallback",
+    wun:         "Unsupported components collapse to :wun/WebFrame.",
+    liveview:    "—",
+    hotwire:     "Native shell handles unknown URLs as web.",
+    rn:          "App update required.",
+  },
+  {
+    capability:  "Optimistic UI",
+    wun:         "Same :morph runs server + client; UI predicts.",
+    liveview:    "JS hooks for client-side prediction.",
+    hotwire:     "Optimistic HTML via Turbo Frames.",
+    rn:          "App-level (Redux, Zustand, etc.).",
+  },
+];
+---
+<div class="wun-compare" role="region" aria-label="Wun compared to LiveView, Hotwire, and React Native">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Capability</th>
+        <th scope="col"><strong>Wun</strong></th>
+        <th scope="col">LiveView</th>
+        <th scope="col">Hotwire Native</th>
+        <th scope="col">React Native</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(r => (
+        <tr>
+          <th scope="row">{r.capability}</th>
+          <td class="is-wun">{r.wun}</td>
+          <td>{r.liveview}</td>
+          <td>{r.hotwire}</td>
+          <td>{r.rn}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>

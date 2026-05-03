@@ -3,6 +3,11 @@ title: Skills
 description: Canonical Wun task playbooks for AI agents.
 ---
 
+> **TL;DR.** Skills are narrow, one-task playbooks for AI agents.
+> Each is a Markdown file under `skills/` in the repo. Agents
+> using the [MCP server](/ai/mcp/) can also pull them as
+> `wun://skills/<name>` resources on demand.
+
 The `skills/` directory holds narrow, single-task how-to playbooks
 agents can ingest and follow mechanically. Each skill has the same
 shape:
@@ -30,7 +35,7 @@ If a task takes more than ~10 steps, it should be split.
 | [add-component-pack](https://github.com/Holy-Coders/wun/blob/master/skills/add-component-pack.md)      | building a reusable `:myapp/*` library            |
 | [ship-a-breaking-change](https://github.com/Holy-Coders/wun/blob/master/skills/ship-a-breaking-change.md) | landing a change that needs a migration script   |
 
-Each skill is also a [MCP resource](../ai/mcp/) under
+Each skill is also a [MCP resource](/ai/mcp/) under
 `wun://skills/<name>`, so agents using the wun-mcp server can pull
 them into context on demand.
 

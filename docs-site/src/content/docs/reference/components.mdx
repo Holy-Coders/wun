@@ -4,6 +4,12 @@ description: The :wun/* components Wun ships out of the box.
 ---
 
 import { Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { withBase } from '~/utils/base.mjs';
+
+> **TL;DR.** This is the foundational vocabulary that ships with
+> the framework. Every entry has a native renderer on web, iOS,
+> and Android, plus a server-side HTML mapping so the WebFrame
+> fallback is never empty.
 
 The framework registers these via `wun.foundation.components`. Each
 has a native renderer in `wun-web`, `wun-ios`, and `wun-android`,
@@ -94,12 +100,12 @@ Kotlin renderers and splices both registry files.
 <CardGrid>
   <LinkCard
     title="How components work"
-    href="/concepts/components/"
+    href={withBase('/concepts/components/')}
     description="The full pattern for declaring, registering, and shipping a component across platforms."
   />
   <LinkCard
     title="CLI reference"
-    href="/reference/cli/"
+    href={withBase('/reference/cli/')}
     description="wun add component, wun status, and the rest of the developer CLI."
   />
 </CardGrid>

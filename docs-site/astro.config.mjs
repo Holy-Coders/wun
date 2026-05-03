@@ -15,16 +15,32 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import rehypeMermaid from "rehype-mermaid";
+import remarkBasePrefix from "./src/plugins/remark-base-prefix.mjs";
+import { fileURLToPath } from "node:url";
 
 const onGitHubPages = process.env.GH_PAGES === "1";
+const base          = onGitHubPages ? "/wun" : "";
 
 export default defineConfig({
   site:    "https://holy-coders.github.io",
   base:    onGitHubPages ? "/wun" : undefined,
   trailingSlash: "ignore",
 
+  // Vite alias so MDX files can `import { withBase } from "~/utils/base.mjs"`
+  // without brittle ../../ traversal across content collection boundaries.
+  vite: {
+    resolve: {
+      alias: {
+        "~": fileURLToPath(new URL("./src", import.meta.url)),
+      },
+    },
+  },
+
   markdown: {
     syntaxHighlight: "shiki",
+    // Prefix every absolute Markdown link with `base` so /wun lands.
+    // No-op locally (base = "").
+    remarkPlugins: [[remarkBasePrefix, { base }]],
     rehypePlugins: [
       [rehypeMermaid, {
         // Inline SVG keeps the page zero-JS and lets our custom.css
@@ -55,6 +71,11 @@ export default defineConfig({
       title: "Wun",
       logo: { src: "./src/assets/wun-mark.svg", replacesTitle: false },
       customCss: ["./src/styles/custom.css"],
+      // Override the upstream Hero so frontmatter actions get
+      // base-prefixed (Starlight 0.30 does not).
+      components: {
+        Hero: "./src/components/StarlightHero.astro",
+      },
       social: {
         github: "https://github.com/Holy-Coders/wun",
       },
