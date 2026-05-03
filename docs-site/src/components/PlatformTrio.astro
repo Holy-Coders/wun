@@ -1,0 +1,67 @@
+---
+/**
+ * The "same Hiccup → three native renders" visual on the landing
+ * page. Replaces the previous bitmap-shaped client strip (which
+ * looked like fake screenshots no matter what we put in the SVGs).
+ *
+ * Three columns, all rendering the same counter component with
+ * platform-flavoured chrome:
+ *   - Web    : flat material, system font
+ *   - iOS    : SF-style heading, rounded soft buttons, top sheet bar
+ *   - Android: bolder weight, taller buttons, Material-style ripple-feel
+ *
+ * No JS, no images — just CSS so it scales cleanly and doesn't go
+ * stale when we tweak the counter screen. The point is to show that
+ * the *same* tree is what's rendering everywhere; the platform
+ * differences live in the renderers, not in the data.
+ */
+---
+
+<figure class="wun-trio" aria-label="The same Hiccup tree rendering as native UI on web, iOS, and Android.">
+  <div class="wun-trio__col" data-platform="web">
+    <header class="wun-trio__chrome wun-trio__chrome--web">
+      <span class="wun-trio__dot" /><span class="wun-trio__dot" /><span class="wun-trio__dot" />
+      <span class="wun-trio__url">localhost:8081</span>
+    </header>
+    <div class="wun-trio__stage">
+      <h3 class="wun-trio__h">Counter</h3>
+      <p class="wun-trio__count">42</p>
+      <div class="wun-trio__row">
+        <button class="wun-trio__btn wun-trio__btn--web">−</button>
+        <button class="wun-trio__btn wun-trio__btn--web">+</button>
+      </div>
+    </div>
+    <p class="wun-trio__label">Web · Replicant</p>
+  </div>
+
+  <div class="wun-trio__col" data-platform="ios">
+    <header class="wun-trio__chrome wun-trio__chrome--ios">
+      <span class="wun-trio__time">9:41</span>
+      <span class="wun-trio__notch" aria-hidden="true" />
+    </header>
+    <div class="wun-trio__stage wun-trio__stage--ios">
+      <h3 class="wun-trio__h wun-trio__h--ios">Counter</h3>
+      <p class="wun-trio__count wun-trio__count--ios">42</p>
+      <div class="wun-trio__row">
+        <button class="wun-trio__btn wun-trio__btn--ios">−</button>
+        <button class="wun-trio__btn wun-trio__btn--ios">+</button>
+      </div>
+    </div>
+    <p class="wun-trio__label">iOS · SwiftUI</p>
+  </div>
+
+  <div class="wun-trio__col" data-platform="android">
+    <header class="wun-trio__chrome wun-trio__chrome--android">
+      <span class="wun-trio__appbar">Wun</span>
+    </header>
+    <div class="wun-trio__stage wun-trio__stage--android">
+      <h3 class="wun-trio__h wun-trio__h--android">Counter</h3>
+      <p class="wun-trio__count wun-trio__count--android">42</p>
+      <div class="wun-trio__row">
+        <button class="wun-trio__btn wun-trio__btn--android">−</button>
+        <button class="wun-trio__btn wun-trio__btn--android">+</button>
+      </div>
+    </div>
+    <p class="wun-trio__label">Android · Compose</p>
+  </div>
+</figure>

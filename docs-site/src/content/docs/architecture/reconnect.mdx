@@ -99,6 +99,44 @@ disagreed with the server's), the next confirmed envelope ships
 patches that correct it. Brief flicker, then settled — the
 LiveView "stale ok" idiom.
 
+## Heartbeats and the watchdog
+
+A silent SSE socket isn't always dead — but it's not always alive
+either. NAT/load-balancer idle timeouts and HTTP/2 proxy quirks can
+hide a closed TCP connection from `EventSource` for minutes. Wun
+handles this on both sides:
+
+- **Server**: emits a `{:type :ping :ts ms}` envelope on a
+  configurable interval (default 25s, `WUN_HEARTBEAT_INTERVAL_SECS`
+  to override). Below the typical 60s LB idle window so proxies
+  see traffic and don't reap the socket.
+- **Client**: tracks `last-frame-ms` on every received frame
+  (patches AND heartbeats). If 60s elapse without a frame, the web
+  client closes the EventSource and reconnects manually. Native
+  clients run the same watchdog.
+
+The heartbeat envelope carries no patch — it's purely a liveness
+signal. The client just resets its watchdog timer.
+
+## Backpressure resync
+
+When the server's per-conn outbound buffer fills (slow client,
+saturated network), `offer!` returns false. Wun marks the conn
+**stale** rather than tearing it down or silently dropping the
+patch:
+
+1. Subsequent broadcasts are no-ops while stale (offer! still
+   returns false, but we don't churn).
+2. On the next successful offer, the server forces `prior-tree =
+   nil` so the diff produces a single full `:replace` at root and
+   ships the envelope with `:resync? true`.
+3. The client clears its pending-intents queue (the queue is
+   stale anyway; the bootstrap-shaped envelope re-derives the
+   truth).
+
+Net effect: a temporary buffer overflow costs you one full re-render
+of bandwidth, not a desynced UI.
+
 ## Backoff
 
 Native clients reconnect with exponential backoff:
@@ -109,7 +147,8 @@ Native clients reconnect with exponential backoff:
 
 Plus 0–500ms jitter so a thundering herd doesn't reconnect in
 lockstep. The browser's `EventSource` does its own retry; we layer
-no extra logic on top.
+the heartbeat watchdog on top so silently-dead sockets surface even
+when `EventSource` thinks it's still connected.
 
 ## TTL
 

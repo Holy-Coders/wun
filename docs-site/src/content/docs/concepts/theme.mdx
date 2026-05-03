@@ -1,0 +1,161 @@
+---
+title: Theme primitives
+description: Design tokens defined once on the server, cascading to every client through the wire.
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+> **TL;DR.** Tokens are namespaced keywords like `:wun.color/primary`
+> and `:wun.spacing/md`. The server resolves them to literal values
+> (hex strings, pixel ints) before substitution + diff; the
+> resolved theme also rides in the envelope so clients can resolve
+> tokens optimistically. Cascade order: framework default <
+> app default < per-screen override < per-conn override.
+
+## Why server-driven tokens
+
+A Wun deployment is a single program describing a UI for four
+targets. Hard-coding `#0a66c2` in a web renderer and
+`Color(red: 10, green: 102, blue: 194)` in an iOS renderer is the
+four-versions-of-the-same-thing problem the framework exists to
+avoid. Tokens are declared once and resolved per platform.
+
+## Token shape
+
+A flat map of namespaced keyword → value:
+
+```clojure
+{:wun.color/primary    "#0a66c2"
+ :wun.color/text       "#111111"
+ :wun.spacing/md       16
+ :wun.spacing/lg       24
+ :wun.radius/md        8
+ :wun.font/body-size   14
+ :wun.shadow/sm        "0 1px 2px rgba(0,0,0,0.06)"}
+```
+
+Apps add their own tokens in their own namespace
+(`:myapp.color/brand`, `:myapp.font/display`); the registry is
+open like every other Wun registry.
+
+## Authoring with tokens
+
+Any value in a Hiccup props map can be a token reference instead
+of a literal:
+
+```clojure
+(defscreen :counter/main
+  {:render
+   (fn [state]
+     [:wun/Stack {:gap     :wun.spacing/md
+                  :padding :wun.spacing/lg}
+      [:wun/Heading {:level 1 :color :wun.color/primary} "Counter"]
+      [:wun/Card    {:background :wun.color/surface
+                     :radius     :wun.radius/md}
+       [:wun/Text {} (str (:n state 0))]]])})
+```
+
+The server walks this tree and substitutes `:wun.spacing/md → 16`,
+`:wun.color/primary → "#0a66c2"`, and so on, before shipping. Every
+client sees already-resolved literal values; renderers don't need
+their own token lookup.
+
+## Cascade
+
+```
+framework default  <  app default  <  per-screen override  <  per-conn override
+(empty)               (set-default!)   (screen-spec :theme)    (state[:theme/overrides])
+```
+
+```clojure
+(require '[wun.theme :as theme])
+
+;; Set the app-level default once at startup.
+(theme/set-default! my-app/dark-theme)
+
+;; Override per-screen.
+(defscreen :branding/preview
+  {:theme  {:wun.color/primary "#ff66cc"}
+   :render ...})
+
+;; Per-connection override (e.g. for an admin "preview as user" feature).
+(swap-state-for! conn-id assoc-in [:theme/overrides :wun.color/primary] "#000")
+```
+
+## Resolution rules
+
+`(theme/resolve-value theme v)`:
+
+- If `v` is a namespaced keyword *and* `theme` has a matching entry,
+  return the mapped value.
+- Otherwise return `v` unchanged.
+
+Plain keywords like `:row` or `:h1` are values themselves and pass
+through. **Misspelled tokens** (e.g. `:wun.color/primry`) also pass
+through unchanged — they show up visibly in the rendered tree
+rather than silently becoming `nil`. This is deliberate: visible
+failure is the right default for design-token typos.
+
+## Web: CSS custom properties
+
+The web client mirrors the effective theme as CSS custom properties
+on `documentElement`, so plain CSS in your `index.html` can
+participate:
+
+```css
+.wun-stack {
+  gap: var(--wun-spacing-md, 12px);
+  background: var(--wun-color-surface, #fafafa);
+}
+```
+
+The naming is mechanical: `:wun.color/primary` →
+`--wun-color-primary`, with dots and slashes flattened to dashes.
+
+## Native
+
+iOS `TreeStore.theme` and Android `TreeMirror.theme` mirror the
+same map. Native renderers see resolved values directly (the server
+substitutes before shipping), so Phase 6 doesn't require a custom
+SwiftUI Color resolver. Optimistic prediction on iOS lands in a
+later slice; when it does, both clients ship a `wun.theme/resolve`
+port that mirrors the cljc one.
+
+## Default-light tokens
+
+Wun ships `wun.foundation.theme` with sensible defaults:
+
+| token                     | default                           |
+|---------------------------|-----------------------------------|
+| `:wun.color/primary`      | `#0a66c2`                         |
+| `:wun.color/text`         | `#111111`                         |
+| `:wun.color/text-muted`   | `#666666`                         |
+| `:wun.color/background`   | `#ffffff`                         |
+| `:wun.color/surface`      | `#fafafa`                         |
+| `:wun.color/border`       | `rgba(0,0,0,0.12)`                |
+| `:wun.color/danger`       | `#9b1c1c`                         |
+| `:wun.color/success`      | `#1b6c3a`                         |
+| `:wun.color/warning`      | `#7a5300`                         |
+| `:wun.spacing/xxs..xl`    | `2 4 8 16 24 40` (px)             |
+| `:wun.radius/sm md lg`    | `4 8 16` (px)                     |
+| `:wun.font/family`        | system-ui sans stack              |
+| `:wun.font/body-size`     | `14`                              |
+| `:wun.font/heading-size`  | `22`                              |
+| `:wun.shadow/sm md lg`    | three increasing elevations       |
+
+Apps override per-token with `theme/merge-default!`.
+
+<Aside type="tip" title="Dark mode">
+Dark mode is just another theme map. App startup chooses the
+default based on a user preference; the per-conn override can
+follow `prefers-color-scheme` from the client. The cascade does
+the rest.
+</Aside>
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Wire format"  href="/concepts/wire-format/" />
+  <LinkCard title="Components"   href="/concepts/components/" />
+  <LinkCard title="Forms & uploads" href="/concepts/forms/" />
+</CardGrid>
