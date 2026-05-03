@@ -53,12 +53,23 @@ let dispatcher = IntentDispatcher(
     }
 )
 
+// Build the request headers. Native clients can set arbitrary headers
+// (unlike EventSource on the web), so caps + format + an optional
+// session-token resume token all ride here. The session token is
+// pulled from UserDefaults; if a previous run logged in, the server
+// rehydrates the user's slice during the SSE handshake.
+var sseHeaders: [String: String] = [
+    "X-Wun-Capabilities": capabilityHeaderValue,
+    "X-Wun-Format":       "json",
+]
+if let token = Persistence.sessionToken(path: "/") {
+    sseHeaders["X-Wun-Session"] = token
+    print("[smoke] resuming with persisted session token (prefix \(token.prefix(8)))")
+}
+
 let client = SSEClient(
     url: sseURL,
-    headers: [
-        "X-Wun-Capabilities": capabilityHeaderValue,
-        "X-Wun-Format":       "json",
-    ],
+    headers: sseHeaders,
     onConnected: { print("[smoke] connected to \(sseURL) (caps via header)") },
     onDisconnect: { error in
         if let e = error { print("[smoke] disconnected: \(e)") }

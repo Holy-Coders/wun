@@ -65,6 +65,19 @@ enough to pin to a tag, swap the `:local/root` / `path:` /
 generated app's README for the exact swap. `wun release` from the wun
 repo cuts a tag suitable for any of those forms.
 
+### Want a database, auth, and a deployable image out of the box?
+
+```bash
+wun new app myapp --db sqlite --docker        # or --db postgres / --db datomic
+cd myapp && npm install && wun dev
+```
+
+This adds a working notes feature, signup/login, an auth-gated
+dashboard, structured logging, a `/healthz` route, a multi-stage
+Dockerfile, GitHub Actions CI, and a `fly.toml` for fly.io. See the
+generated `README.md` for the per-flag layout, and `docs/build-a-feature-end-to-end.md`
+for a walkthrough of adding your own feature on top.
+
 ## Repo layout
 
 This is a **monorepo** for the cross-platform pieces called for in the brief.

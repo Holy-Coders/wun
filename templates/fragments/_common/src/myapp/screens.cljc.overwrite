@@ -1,0 +1,56 @@
+(ns myapp.screens
+  "App screens. Each defscreen carries a `:path` (matched on SSE
+   connect or via :wun/navigate {:path \"/foo\"}) and a `:render` fn
+   that produces a Hiccup-shaped tree using namespaced component
+   keywords.
+
+   This is the `--db != none` home screen: a hub that links to the
+   notes feature, the auth flow, and the counter demo, plus a top
+   nav showing the current login state. Without `--db`, the base
+   template ships a simpler counter-only home -- they share the
+   `:myapp/home` keyword so navigation and bookmarks stay stable
+   across scaffolds."
+  (:require [wun.screens :refer [defscreen]]))
+
+(defn- nav-bar [state]
+  [:wun/Stack {:direction :row :gap 12 :padding 4}
+   [:wun/Heading {:level 1} "myapp"]
+   (if-let [{:keys [email]} (:session state)]
+     [:wun/Stack {:direction :row :gap 8}
+      [:wun/Text   {:variant :caption} (str "logged in as " email)]
+      [:wun/Button {:on-press {:intent :myapp/log-out :params {}}}
+       "log out"]]
+     [:wun/Stack {:direction :row :gap 8}
+      [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/login"}}}
+       "log in"]
+      [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/signup"}}}
+       "sign up"]])])
+
+(defscreen :myapp/home
+  {:path "/"
+   :meta (fn [state]
+           {:title (str "myapp"
+                        (when-let [e (get-in state [:session :email])]
+                          (str " · " e)))})
+   :render
+   (fn [state]
+     [:wun/Stack {:gap 24 :padding 24}
+      (nav-bar state)
+
+      ;; Counter demo (kept from the base template so the optimistic
+      ;; morph story stays visible).
+      [:wun/Stack {:gap 8}
+       [:wun/Heading {:level 2} "Counter demo"]
+       [:wun/Text {:variant :body} (str "Counter is at " (:counter state 0) ".")]
+       [:wun/Stack {:direction :row :gap 8}
+        [:wun/Button {:on-press {:intent :myapp/inc   :params {}}} "+"]
+        [:wun/Button {:on-press {:intent :myapp/reset :params {}}} "reset"]]]
+
+      ;; Pointers to the DB-backed and auth-gated features.
+      [:wun/Stack {:gap 8}
+       [:wun/Heading {:level 2} "Try the features"]
+       [:wun/Stack {:direction :row :gap 8}
+        [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/notes"}}}
+         "→ Notes (DB-backed)"]
+        [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/dashboard"}}}
+         "→ Dashboard (auth-gated)"]]]])})

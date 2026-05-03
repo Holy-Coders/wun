@@ -105,7 +105,9 @@
 
 (defn- predicted-state []
   (reduce (fn [s {:keys [intent params]}]
-            (intents/apply-intent s intent params))
+            (if (intents/server-only? intent)
+              s
+              (intents/apply-intent s intent params)))
           @confirmed-state
           @pending))
 

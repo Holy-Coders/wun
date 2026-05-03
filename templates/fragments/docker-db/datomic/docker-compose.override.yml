@@ -1,0 +1,7 @@
+services:
+  app:
+    volumes:
+      - myapp-data:/app/data
+
+volumes:
+  myapp-data:

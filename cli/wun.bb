@@ -964,12 +964,15 @@
 (def ^:private text-extensions
   #{"clj" "cljc" "cljs" "edn" "swift" "kt" "kts"
     "html" "css" "js" "json" "md" "yml" "yaml"
-    "sh" "bb" "txt" "gradle" "gitignore"})
+    "sh" "bb" "txt" "gradle" "gitignore"
+    ;; Added for Docker / DB / fly fragments:
+    "sql" "env" "example" "properties" "conf" "toml" "lock"})
 
 (defn- text-file? [^java.nio.file.Path p]
   (let [name (str (fs/file-name p))]
     (or (text-extensions (some-> (re-find #"\.([^.]+)$" name) second))
-        (#{".gitignore" "Package.swift"} name))))
+        (#{".gitignore" ".dockerignore" ".env" ".env.example"
+           "Package.swift" "Dockerfile" "fly.toml"} name))))
 
 (defn- substitute-content! [path slug pascal]
   (try
@@ -1030,26 +1033,380 @@
     (println "   no hyphens, dots, or underscores in the name)")
     (System/exit 2)))
 
+;; ---------------------------------------------------------------------------
+;; new-app flag parsing
+;;
+;; Accepts (in any order):
+;;   --link
+;;   --docker
+;;   --no-auth
+;;   --db {none|sqlite|postgres|datomic}
+;;
+;; Anything else => exit 2 with usage. Defaults: db=none, docker=false,
+;; auth=true (only meaningful when db != none).
+
+(def ^:private db-values #{"none" "sqlite" "postgres" "datomic"})
+
+(defn- new-app-usage []
+  (str "usage: wun new app <name> "
+       "[--db none|sqlite|postgres|datomic] [--docker] [--no-auth] [--link]"))
+
+(defn- parse-new-app-args [args]
+  (loop [acc {:positional [] :link? false :docker? false
+              :auth? true   :db "none"}
+         xs  args]
+    (if (empty? xs)
+      acc
+      (let [a (first xs)]
+        (cond
+          (= a "--link")     (recur (assoc acc :link? true)    (rest xs))
+          (= a "--docker")   (recur (assoc acc :docker? true)  (rest xs))
+          (= a "--no-auth")  (recur (assoc acc :auth? false)   (rest xs))
+          (= a "--db")       (let [v (second xs)]
+                               (when-not (and v (db-values v))
+                                 (err "--db expects one of "
+                                      (str/join "|" (sort db-values)))
+                                 (System/exit 2))
+                               (recur (assoc acc :db v) (drop 2 xs)))
+          (str/starts-with? a "--db=")
+          (let [v (subs a 5)]
+            (when-not (db-values v)
+              (err "--db expects one of " (str/join "|" (sort db-values)))
+              (System/exit 2))
+            (recur (assoc acc :db v) (rest xs)))
+          (str/starts-with? a "--")
+          (do (err "unknown flag: " a)
+              (println "  " (new-app-usage))
+              (System/exit 2))
+          :else
+          (recur (update acc :positional conj a) (rest xs)))))))
+
+;; ---------------------------------------------------------------------------
+;; Fragment overlays
+;;
+;; A fragment is a directory of files mirroring the layout they should
+;; land at in the destination app. `overlay-fragment!` walks every file
+;; under `src` and:
+;;   - Files NOT ending in .append are copied verbatim to the matching
+;;     sub-path in `dst` (creating parent dirs as needed). If the file
+;;     already exists at the destination we leave it alone -- overlays
+;;     never silently clobber base-template content.
+;;   - Files ending in .append are appended into the same-named
+;;     (sans-suffix) destination file, wrapped in a sentinel block so
+;;     subsequent runs don't double-append. If the destination file
+;;     doesn't exist yet, we treat it as a copy.
+
+(defn- sentinel-open  [id] (str ";; >>> WUN-FRAGMENT:" id " >>>\n"))
+(defn- sentinel-close [id] (str ";; <<< WUN-FRAGMENT:" id " <<<\n"))
+
+(defn- already-applied? [^String existing id]
+  (str/includes? existing (str "WUN-FRAGMENT:" id)))
+
+(defn- append-with-sentinel! [dst-file ^String body id]
+  (let [existing (if (fs/exists? dst-file) (slurp (str dst-file)) "")
+        sep      (if (or (str/blank? existing)
+                         (str/ends-with? existing "\n"))
+                   ""
+                   "\n")]
+    (when-not (already-applied? existing id)
+      (spit (str dst-file)
+            (str existing sep
+                 (sentinel-open id)
+                 (cond-> body
+                   (not (str/ends-with? body "\n")) (str "\n"))
+                 (sentinel-close id))))))
+
+(defn- overlay-fragment! [^String src ^String dst id]
+  (let [src-path (fs/path src)]
+    (when-not (fs/exists? src-path)
+      (err "fragment missing: " src) (System/exit 2))
+    (step "overlay " (c :bold id) " from " src)
+    ;; `:hidden true` picks up .dockerignore, .env.example, .github/.
+    ;; `:follow-links true` keeps things sane if a fragment ever uses
+    ;; a symlink; today none does.
+    (doseq [p (fs/glob src-path "**" {:hidden true :follow-links true})
+            :when (fs/regular-file? p)]
+      (let [rel        (str (fs/relativize src-path p))
+            append?    (str/ends-with? rel ".append")
+            overwrite? (str/ends-with? rel ".overwrite")
+            dst-rel    (cond
+                         append?    (subs rel 0 (- (count rel) 7))
+                         overwrite? (subs rel 0 (- (count rel) 10))
+                         :else      rel)
+            dst-file   (fs/path dst dst-rel)]
+        (fs/create-dirs (fs/parent dst-file))
+        (cond
+          append?
+          (append-with-sentinel! dst-file (slurp (str p)) id)
+
+          overwrite?
+          (fs/copy (str p) (str dst-file)
+                   {:replace-existing true})
+
+          (fs/exists? dst-file)
+          (info "skip (exists): " dst-rel)
+
+          :else
+          (fs/copy (str p) (str dst-file)))))))
+
+;; ---------------------------------------------------------------------------
+;; Surgical patches into base-template files
+
+;; Shared by every --db != none scaffold (config.clj reads env, log.clj
+;; writes JSON-formatted log lines).
+(def ^:private common-deps
+  '{org.clojure/data.json {:mvn/version "2.5.1"}})
+
+(def ^:private db-deps
+  {:sqlite   '{org.xerial/sqlite-jdbc                  {:mvn/version "3.46.1.0"}
+               com.github.seancorfield/next.jdbc       {:mvn/version "1.3.939"}
+               com.zaxxer/HikariCP                     {:mvn/version "5.1.0"}}
+   :postgres '{org.postgresql/postgresql               {:mvn/version "42.7.4"}
+               com.github.seancorfield/next.jdbc       {:mvn/version "1.3.939"}
+               com.zaxxer/HikariCP                     {:mvn/version "5.1.0"}}
+   :datomic  '{com.datomic/local                       {:mvn/version "1.0.277"}}})
+
+(def ^:private auth-deps
+  '{buddy/buddy-hashers {:mvn/version "2.0.167"}})
+
+(def ^:private build-alias
+  '{:build {:deps       {io.github.clojure/tools.build
+                         {:git/tag "v0.10.5" :git/sha "2a21b7a"}}
+            :ns-default build}})
+
+(defn- patch-deps-edn! [deps-path {:keys [db docker? auth?]}]
+  (let [text (slurp (str deps-path))
+        db?  (and db (not= db :none))]
+    (cond
+      ;; No-op when there's nothing to splice -- preserves the
+      ;; --db none + no-docker scaffold byte-identical to today.
+      (and (not db?) (not docker?))
+      :no-op
+
+      (str/includes? text "WUN-PATCHED")
+      (info "deps.edn already patched -- skipping")
+
+      :else
+      (let [parsed   (try (clojure.edn/read-string text)
+                          (catch Throwable e
+                            (err "could not parse " deps-path ": " (.getMessage e))
+                            (System/exit 2)))
+            with-db  (cond-> parsed
+                       db?            (update :deps merge common-deps)
+                       db?            (update :deps merge (db-deps db))
+                       (and db? auth?) (update :deps merge auth-deps))
+            with-bld (cond-> with-db
+                       docker?
+                       (update :aliases merge build-alias))
+            out      (with-out-str
+                       (println ";; deps.edn -- WUN-PATCHED by `wun new app`.")
+                       (println ";;")
+                       (println ";; Wun framework deps default to sibling :local/root entries.")
+                       (println ";; To pin to a release instead, swap any :local/root for")
+                       (println ";; {:git/url \"https://github.com/Holy-Coders/wun.git\"")
+                       (println ";;  :git/tag \"v0.1.0\" :git/sha \"<full-sha>\"")
+                       (println ";;  :deps/root \"wun-shared\"}.")
+                       (println)
+                       (pprint/pprint with-bld))]
+        (spit (str deps-path) out)))))
+
+(defn- patch-server-main! [main-path slug {:keys [db auth?]}]
+  (when (fs/exists? main-path)
+    (let [text   (slurp (str main-path))
+          db?    (and db (not= db :none))
+          dbns   (str slug ".server.db")
+          notesn (str slug ".notes")
+          notes-store (str slug ".server.notes-store")
+          authns (str slug ".server.auth")
+          authui (str slug ".auth")
+          ;; Step 1: extend (:require ...) with new namespaces. We add
+          ;; both the server-only `*.server.db`/`*.server.notes-store`
+          ;; namespaces (need to be loaded server-side) and the
+          ;; cross-platform `*.notes`/`*.auth` namespaces (whose
+          ;; side-effecting `definent`/`defscreen` registrations
+          ;; populate the registries).
+          require-additions
+          (str/join "\n            "
+                    (concat (when db? [dbns notes-store notesn
+                                       (str slug ".persist")])
+                            (when (= db :postgres) [(str slug ".server.bus")])
+                            (when (and db? auth?) [authns authui])
+                            ;; aliased require must be a vector form
+                            ["[wun.server.state :as wun-state]"]))
+          text   (if (and db? (not (str/includes? text dbns)))
+                   (str/replace-first
+                    text
+                    "wun.foundation.components"
+                    (str "wun.foundation.components\n            "
+                         require-additions))
+                   text)
+          ;; Step 2: insert (db/init!), the per-conn init-state-fn that
+          ;; preloads :notes (and hydrates from the persist layer when
+          ;; a slice resumes), and (auth/init!) before (http/start! ...).
+          ;; The init-state-fn fires once per fresh conn slice; the
+          ;; add-note morph re-folds :notes from DB on every subsequent
+          ;; write so the slice stays in sync with the row table.
+          init-block
+          (str (when db?
+                 (str "(" dbns "/init!)\n  "
+                      "(myapp.persist/init!)\n  "
+                      "(wun-state/register-init-state-fn!\n   "
+                      "(fn [_conn-id ctx]\n     "
+                      "(let [token   (:session-token ctx)\n           "
+                      (if auth?
+                        (str "session (when token (myapp.server.auth/load-session-by-token token))\n           ")
+                        "session nil\n           ")
+                      "saved   (when session (myapp.persist/load-state-by-user (:user-id session)))]\n       "
+                      "(cond-> {:notes (" notes-store "/list-notes)}\n         "
+                      "saved   (merge saved)\n         "
+                      "session (assoc :session session)))))\n  "))
+               (when (and db? auth?)
+                 (str "(" authns "/init!)\n  "))
+               (when (= db :postgres)
+                 (str "(myapp.server.bus/start!)\n  ")))
+          text   (if (and db?
+                          (not (str/includes? text (str "(" dbns "/init!)"))))
+                   (str/replace-first
+                    text
+                    "(http/start!"
+                    (str init-block "(http/start!"))
+                   text)]
+      (spit (str main-path) text))))
+
+(defn- patch-readme! [readme-path {:keys [db docker? auth?]}]
+  (when (fs/exists? readme-path)
+    (let [text   (slurp (str readme-path))
+          chunks (cond-> []
+                   docker?
+                   (conj (str "## Deploy with Docker\n\n"
+                              "```bash\n"
+                              "docker compose up --build\n"
+                              "open http://localhost:8080\n"
+                              "```\n\n"
+                              "The app reads `PORT`, `HOST`, `LOG_LEVEL`, and `SESSION_SECRET`\n"
+                              "from the environment (see `.env.example`). The `Dockerfile` is\n"
+                              "multi-stage: stage 1 builds an uberjar via `clj -T:build uber`,\n"
+                              "stage 2 runs it on `eclipse-temurin:21-jre`.\n"))
+                   (and (not= db "none") (not= db :none))
+                   (conj (str "## Database (" (name db) ")\n\n"
+                              (case db
+                                ("sqlite" :sqlite)
+                                (str "SQLite is embedded; the DB file lives at `./data/myapp.db`\n"
+                                     "(or `/app/data/myapp.db` in Docker). Migrations under\n"
+                                     "`resources/migrations/*.sql` run on startup.\n")
+                                ("postgres" :postgres)
+                                (str "Postgres is brought up by `docker-compose.yml` when you\n"
+                                     "use `--docker`. Otherwise set `DATABASE_URL` to your own\n"
+                                     "Postgres URL, e.g. `jdbc:postgresql://localhost:5432/myapp`.\n"
+                                     "Migrations under `resources/migrations/*.sql` run on startup.\n")
+                                ("datomic" :datomic)
+                                (str "Datomic Local runs in-process; data persists at `./data/datomic`\n"
+                                     "(or `/app/data/datomic` in Docker). The schema lives in\n"
+                                     "`resources/datomic/schema.edn` and is transacted on startup.\n"))
+                              "\nThe home screen at `/` is a hub: counter demo,\n"
+                              "links to the DB-backed `/notes` feature, the auth-gated\n"
+                              "`/dashboard`, and a top nav showing your login state.\n"))
+                   (and auth? (not= db "none") (not= db :none))
+                   (conj (str "## Auth\n\n"
+                              "Cookie-less, token-based session auth is wired in. The\n"
+                              "session token is held in `(:session state)` and persists\n"
+                              "across reloads via the existing client-side hot-cache.\n\n"
+                              "- `/signup`: create an account (bcrypt-hashed password).\n"
+                              "- `/login`:  sign in to an existing account.\n"
+                              "- `/dashboard`: an auth-gated screen demonstrating the\n"
+                              "  render-time `(:session state)` check pattern.\n"
+                              "- `/notes`: the compose form is hidden when logged out.\n\n"
+                              "Auth is **single-tenant** in this scaffold: state lives in\n"
+                              "one global atom, so 'logged in as X' is shared across\n"
+                              "connections. Per-connection sessions land when the\n"
+                              "framework grows per-conn state. For multi-user production,\n"
+                              "you'll want to thread the session token into intent params\n"
+                              "and look up the user in each morph (rather than reading\n"
+                              "from `(:session state)`).\n\n"
+                              "Set `SESSION_SECRET` (32+ random bytes) in production --\n"
+                              "the dev default is unsafe.\n"))
+                   docker?
+                   (conj (str "## Deploy to fly.io\n\n"
+                              "```bash\n"
+                              "fly launch --no-deploy   # accept the generated fly.toml\n"
+                              "fly secrets set SESSION_SECRET=$(openssl rand -hex 32)\n"
+                              (when (= (str db) "postgres")
+                                "fly pg create && fly pg attach <pg-app-name>\n")
+                              "fly deploy\n"
+                              "```\n")))]
+      (when (seq chunks)
+        (let [marker "<!-- WUN-DEPLOY-DOCS -->"]
+          (when-not (str/includes? text marker)
+            (spit (str readme-path)
+                  (str text "\n" marker "\n\n"
+                       (str/join "\n" chunks)))))))))
+
 (defn- cmd-new-app [args]
-  (let [link?   (some #{"--link"} args)
-        positional (remove #{"--link"} args)
-        name    (first positional)]
+  (let [{:keys [positional link? docker? auth? db]} (parse-new-app-args args)
+        name (first positional)]
     (bail-if-bad-name! name "app")
-    (let [dst    (copy-template! "app" name)
-          pascal (pascalize name)]
-      (rewrite-tree! (str dst) name pascal)
+    (let [dst       (copy-template! "app" name)
+          dst-s     (str dst)
+          pascal    (pascalize name)
+          root      (repo-root)
+          db-key    (when (not= db "none") (keyword db))
+          frag      (fn [id] (str (fs/path root "templates" "fragments" id)))
+          has-frag? (fn [id] (fs/exists? (fs/path root "templates" "fragments" id)))]
+      ;; Step 1: overlay fragments BEFORE rewrite-tree! so substitutions
+      ;; (myapp -> slug) also apply to overlay content.
+      (when db-key
+        (when (has-frag? "_common")
+          (overlay-fragment! (frag "_common") dst-s "common"))
+        (when (has-frag? (str "db/" db))
+          (overlay-fragment! (frag (str "db/" db)) dst-s (str "db-" db)))
+        (when (and auth? (has-frag? "auth"))
+          (overlay-fragment! (frag "auth") dst-s "auth"))
+        (when (and auth? (has-frag? (str "auth-db/" db)))
+          (overlay-fragment! (frag (str "auth-db/" db)) dst-s
+                             (str "auth-db-" db))))
+      (when docker?
+        (when (has-frag? "docker")
+          (overlay-fragment! (frag "docker") dst-s "docker"))
+        (when (has-frag? "ci")
+          (overlay-fragment! (frag "ci") dst-s "ci"))
+        (when (has-frag? "fly")
+          (overlay-fragment! (frag "fly") dst-s "fly"))
+        (when (and db-key (has-frag? (str "docker-db/" db)))
+          (overlay-fragment! (frag (str "docker-db/" db)) dst-s
+                             (str "docker-db-" db))))
+      ;; Step 2: surgical patches into base files.
+      (patch-deps-edn!     (str (fs/path dst "deps.edn"))
+                           {:db (or db-key :none) :docker? docker? :auth? auth?})
+      (when db-key
+        (patch-server-main! (str (fs/path dst "src" "myapp" "server" "main.clj"))
+                            "myapp" {:db db-key :auth? auth?}))
+      (patch-readme!       (str (fs/path dst "README.md"))
+                           {:db db :docker? docker? :auth? auth?})
+      ;; Step 3: existing substitution sweep over the merged tree.
+      (rewrite-tree! dst-s name pascal)
       (when link?
         (println)
         (if (active-wun-root)
-          (cmd-link-app (str dst))
+          (cmd-link-app dst-s)
           (warn "--link requested but no active editable Wun is registered;"
                 " run `wun link` inside a wun checkout first.")))
       (println)
       (println "  next steps:")
       (println (str "    cd " name))
       (println "    npm install                  # shadow-cljs needs node deps")
+      (when (and db-key (= db "postgres") (not docker?))
+        (println "    export DATABASE_URL=jdbc:postgresql://localhost:5432/" name
+                 "?user=" name "&password=" name)
+        (println "      # ^ point at your own Postgres; --docker would compose one"))
       (println "    wun dev                      # server + cljs watch together")
       (println "    open http://localhost:8081")
+      (when docker?
+        (println "    docker compose up --build    # production-style image")
+        (println "    open http://localhost:8080"))
+      (when db-key
+        (println "    open http://localhost:8081/notes")
+        (when auth?
+          (println "    open http://localhost:8081/signup")))
       (println)
       (cond
         link?
@@ -1061,7 +1418,7 @@
 
         :else
         (do (println "  the template assumes wun is a sibling clone -- see the")
-            (println (str "  README in " (str dst) " to switch to remote refs.")))))))
+            (println (str "  README in " dst-s " to switch to remote refs.")))))))
 
 (defn- cmd-new-pack [[name & _]]
   (bail-if-bad-name! name "pack")
@@ -1279,7 +1636,11 @@
     "  wun add component <ns>/<Name>    multi-platform component scaffold"
     "  wun add screen    <ns>/<name>    new screen .cljc"
     "  wun add intent    <ns>/<name>    new intent .cljc"
-    "  wun new app  <name> [--link]     standalone app scaffold (server + web + ios + android)"
+    "  wun new app  <name> [opts...]    standalone app scaffold (server + web + ios + android)"
+    "    opts:  --db {none|sqlite|postgres|datomic}  add a DB layer + demo CRUD feature"
+    "           --docker                              ship Dockerfile + compose + fly.toml + CI"
+    "           --no-auth                             skip the cookie-session auth scaffold"
+    "           --link                                link to the active editable wun checkout"
     "  wun new pack <name>              user-component pack scaffold"
     "  wun link                         register cwd's wun checkout (or link this app to it)"
     "  wun unlink                       unregister checkout (or restore app's deps.edn)"

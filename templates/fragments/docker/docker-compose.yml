@@ -1,0 +1,11 @@
+name: myapp
+
+services:
+  app:
+    build: .
+    image: myapp:latest
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    restart: unless-stopped

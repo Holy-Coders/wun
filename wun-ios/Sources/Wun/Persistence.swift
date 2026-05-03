@@ -66,4 +66,25 @@ public enum Persistence {
                              store: UserDefaults = .standard) {
         store.removeObject(forKey: key(for: path))
     }
+
+    /// Pull a server-issued session token out of the persisted
+    /// state for `path`, if any. Mirrors the web client's
+    /// `wun.web.core/persisted-session-token`. The host wires this
+    /// into `SSEClient`'s `headers` map as `X-Wun-Session: <t>` so
+    /// the server's init-state-fn rehydrates the user's slice during
+    /// the SSE handshake. Returns nil when:
+    ///   - no snapshot exists for `path`,
+    ///   - the snapshot is stale,
+    ///   - the snapshot has no `:session.token`.
+    /// Stale tokens are a no-op server-side (the sessions table
+    /// lookup returns nil and the init-state-fn skips the merge),
+    /// so don't bother validating client-side.
+    public static func sessionToken(path: String,
+                                    store: UserDefaults = .standard) -> String? {
+        guard let snap = load(path: path, store: store) else { return nil }
+        guard case .object(let s) = snap.state,
+              case .object(let session)? = s["session"],
+              case .string(let t)? = session["token"] else { return nil }
+        return t.isEmpty ? nil : t
+    }
 }

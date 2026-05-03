@@ -1,0 +1,2 @@
+# Datomic Local on-disk storage -- created at runtime by db/init!.
+data/

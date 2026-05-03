@@ -9,6 +9,7 @@
             [wun.capabilities   :as capabilities]
             [wun.components     :as components]
             [wun.web.intent-bus :as bus]
+            [wun.web.persist    :as persist]
             [wun.web.renderers  :as renderers]
             ;; populate registries:
             wun.foundation.components
@@ -76,12 +77,24 @@
        (map (fn [k] [k (or (:since (components/lookup k)) 1)]))
        (into {})))
 
+(defn- persisted-session-token
+  "Pull a server-issued session token out of localStorage if a previous
+   login dropped one there. The token rides on `?session-token=` so the
+   server's init-state-fn can rehydrate the user's saved slice during
+   the SSE handshake. EventSource can't set custom headers, so query
+   param is the only option for the web client; native clients use
+   the `X-Wun-Session` request header instead."
+  []
+  (some-> (persist/load) :confirmed-state :session :token))
+
 (defn- caps-url []
-  (let [path (or (some-> js/window .-location .-pathname) "/")]
+  (let [path  (or (some-> js/window .-location .-pathname) "/")
+        token (persisted-session-token)]
     (str server-base
          "/wun?caps=" (js/encodeURIComponent
                        (capabilities/serialize (current-caps)))
-         "&path="    (js/encodeURIComponent path))))
+         "&path="    (js/encodeURIComponent path)
+         (when token (str "&session-token=" (js/encodeURIComponent token))))))
 
 (defn- start-sse! []
   (when-let [old @es] (.close old))

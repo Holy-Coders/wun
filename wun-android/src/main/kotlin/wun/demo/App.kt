@@ -104,13 +104,21 @@ fun main() = application {
         )
     }
     val sse = remember {
+        // Headers carry caps, format, and the resume session-token.
+        // Persistence.sessionToken pulls :session.token out of the
+        // last saved snapshot if any; the server uses it during the
+        // SSE handshake to rehydrate this user's slice.
+        val sseHeaders = buildMap<String, String> {
+            put("X-Wun-Capabilities", registry.registered()
+                .joinToString(",") { "$it@1" })
+            put("X-Wun-Format", "json")
+            Persistence.sessionToken("/")?.let {
+                put("X-Wun-Session", it)
+            }
+        }
         SSEClient(
             url = "$BASE_URL/wun",
-            headers = mapOf(
-                "X-Wun-Capabilities" to registry.registered()
-                    .joinToString(",") { "$it@1" },
-                "X-Wun-Format"       to "json",
-            ),
+            headers = sseHeaders,
             onConnected  = { status = "connected" },
             onDisconnect = { e ->
                 status = if (e == null) "disconnected" else "disconnected: ${e.message}"

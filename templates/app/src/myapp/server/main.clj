@@ -15,6 +15,8 @@
   (:gen-class))
 
 (defn -main [& _]
+  ;; PORT / HOST are honored by http/start! itself (env -> :port/:host).
+  ;; Passing them explicitly here is redundant; we keep this lean so the
+  ;; default scaffold stays a one-liner.
   (http/start! {:static "public"})
-  (println "myapp listening on http://localhost:8080")
   @(promise))
