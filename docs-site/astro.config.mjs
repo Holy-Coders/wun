@@ -127,9 +127,10 @@ export default defineConfig({
         },
         { label: "Reference",
           items: [
-            { label: "CLI",                slug: "reference/cli" },
+            { label: "CLI",                  slug: "reference/cli" },
             { label: "Component vocabulary", slug: "reference/components" },
-            { label: "Migrations",         slug: "reference/migrations" },
+            { label: "Live dashboard",       slug: "reference/dashboard" },
+            { label: "Migrations",           slug: "reference/migrations" },
           ],
         },
         { label: "AI integration",
