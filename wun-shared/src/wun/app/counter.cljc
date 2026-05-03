@@ -62,4 +62,10 @@
       [:wun/Stack {:direction :row :gap :wun.spacing/sm}
        [:wun/Button {:on-press {:intent :wun/navigate
                                 :params {:path "/about"}}}
-        "→ About"]]])})
+        "→ About"]
+       [:wun/Button {:on-press {:intent :wun/navigate
+                                :params {:path "/showcase"}}}
+        "→ Showcase"]
+       [:wun/Button {:on-press {:intent :wun/navigate
+                                :params {:path "/_wun/dashboard"}}}
+        "→ Dashboard"]]])})

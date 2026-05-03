@@ -26,7 +26,9 @@
             wun.forms.intents
             wun.web.foundation
             wun.app.counter
-            wun.app.about))
+            wun.app.about
+            wun.app.showcase
+            wun.web.app.showcase-renderers))
 
 ;; ---------------------------------------------------------------------------
 ;; Config
