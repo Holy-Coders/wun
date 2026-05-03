@@ -25,6 +25,7 @@
    pre-empted, resolves directories to index.html, and pins
    Content-Type from the resolved file's extension."
   (:require [clojure.core.async    :as a]
+            [clojure.string        :as str]
             [clojure.tools.logging :as log]
             [io.pedestal.http      :as http]
             [io.pedestal.http.body-params :as body-params]
@@ -35,8 +36,14 @@
             [wun.diff              :as diff]
             [wun.intents           :as intents]
             [wun.screens           :as screens]
+            [wun.server.backpressure :as backpressure]
+            [wun.server.csrf       :as csrf]
+            [wun.server.heartbeat  :as heartbeat]
             [wun.server.html       :as wun-html]
+            [wun.server.rate-limit :as rate-limit]
+            [wun.server.session    :as session]
             [wun.server.state      :as state]
+            [wun.server.telemetry  :as telemetry]
             [wun.server.wire       :as wire])
   (:import  [java.io File]
             [java.net URLEncoder]
@@ -73,18 +80,24 @@
    (`state/state-for ch's conn-id`); there is no global state to read
    from. Substitution + encoding happen per-channel: different clients
    may advertise different caps and request different wire formats.
-   Updates the stored prior + prior-meta on successful enqueue. On
-   offer! failure, evicts the connection iff its channel has actually
-   closed (so transient buffer-full conditions don't drop
-   slow-but-alive clients).
+   Updates the stored prior + prior-meta on successful enqueue.
 
-   Meta (page title, description, theme-color, etc.) is computed
-   per-screen via the screen's optional `:meta` fn and only included
-   when it differs from what this connection last saw -- no wire
-   noise for an unchanged title."
+   Backpressure: if the connection is currently flagged as stale (the
+   previous broadcast's `offer!` failed but the channel is still open),
+   we force prior=nil so the next diff produces a full :replace at root
+   -- a snapshot resync that lets the client recover from whatever
+   patches it missed while saturated. We only set the resync flag once
+   per stale episode; the client clears the visual indicator on receipt.
+
+   On offer! failure: mark the conn stale (so the next call resyncs)
+   and, if the channel has actually been closed, evict it. Transient
+   buffer-full conditions on a slow-but-alive client trigger a resync
+   on the next broadcast rather than a silent patch drop."
   ([ch resolves-intent] (broadcast-to-channel! ch resolves-intent nil))
   ([ch resolves-intent extra-keys]
    (let [conn-id     (state/conn-id ch)
+         was-stale?  (and conn-id (backpressure/stale? conn-id))
+         _           (when was-stale? (state/update-prior-tree! ch nil))
          conn-state  (state/state-for conn-id)
          screen-key  (state/screen-key ch)
          raw         (current-tree-for conn-id screen-key)
@@ -95,23 +108,36 @@
          patches     (diff/diff prior tree)
          meta        (screens/render-meta screen-key conn-state)
          prior-meta  (state/prior-meta ch)
-         meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})]
+         meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})
+         resync-extra (when was-stale? {:resync? true})]
      (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra)
        (let [env  (wire/patch-envelope patches
                                        (merge {:resolves-intent resolves-intent
                                                :state           conn-state}
                                               meta-extra
+                                              resync-extra
                                               extra-keys))
-             data (wire/encode-envelope fmt env)]
+             data (wire/encode-envelope fmt env)
+             offered? (a/offer! ch {:name "patch" :data data})]
          (cond
-           (a/offer! ch {:name "patch" :data data})
+           offered?
            (do (state/update-prior-tree! ch tree)
-               (when meta-extra (state/update-prior-meta! ch meta)))
+               (when meta-extra (state/update-prior-meta! ch meta))
+               (when was-stale?
+                 (backpressure/clear-stale! conn-id)
+                 (telemetry/emit! :wun/snapshot.resync
+                                  {:conn-id conn-id :reason :backpressure})))
 
            (state/closed? ch)
            (do (state/remove-connection! ch)
+               (when conn-id (backpressure/drop-conn! conn-id))
+               (telemetry/emit! :wun/disconnect
+                                {:conn-id conn-id :reason :evicted})
                (log/debugf "wun: evicted closed connection (%d remain)"
-                           (state/connection-count)))))))))
+                           (state/connection-count)))
+
+           :else
+           (when conn-id (backpressure/mark-stale! conn-id))))))))
 
 (defn broadcast-to-conn!
   "Find every SSE channel registered under `conn-id` and re-broadcast
@@ -201,10 +227,24 @@
     (state/add-connection! event-ch caps fmt screen-key conn-id init-ctx)
     (log/debugf "wun: connected conn-id=%s screen=%s fmt=%s caps=%s resumed?=%s"
                 conn-id screen-key (name fmt) (pr-str caps) (boolean session-token))
-    (broadcast-to-channel! event-ch nil
-                           {:conn-id       conn-id
-                            :screen-stack  [screen-key]
-                            :presentations [(screens/presentation screen-key)]})
+    (telemetry/emit! :wun/connect
+                     {:conn-id   conn-id
+                      :screen-key screen-key
+                      :fmt       fmt
+                      :caps      caps
+                      :resumed?  (boolean session-token)})
+    ;; Mint a CSRF token bound to the session token (or the conn-id when
+    ;; there's no session yet). The client echoes it on /intent POSTs.
+    ;; Identical input + secret produces identical output, so a client
+    ;; that lost its token mid-session can recompute it from the binding
+    ;; (typically the session-token from localStorage).
+    (let [csrf-binding (or session-token conn-id)
+          csrf-token   (csrf/issue csrf-binding)]
+      (broadcast-to-channel! event-ch nil
+                             {:conn-id       conn-id
+                              :screen-stack  [screen-key]
+                              :presentations [(screens/presentation screen-key)]
+                              :csrf-token    csrf-token}))
     ctx))
 
 ;; ---------------------------------------------------------------------------
@@ -310,11 +350,99 @@
     (string? v) v
     :else       (str v)))
 
+;; ---------------------------------------------------------------------------
+;; Pre-handler interceptors: rate-limit, then CSRF, then the handler.
+
+(defn- client-ip
+  "Extract the client IP address from the request, honouring the standard
+   `X-Forwarded-For` chain (first hop) when present. Falls back to the
+   Pedestal-reported `:remote-addr`. Used as the bucket key for the
+   ip-scope rate limiter."
+  [request]
+  (or (some-> (get-in request [:headers "x-forwarded-for"])
+              (str/split #",")
+              first
+              str/trim
+              not-empty)
+      (:remote-addr request)
+      "unknown"))
+
+(defn- envelope-conn-id [request]
+  (let [body (or (:transit-params request) (:json-params request))]
+    (some-> (or (:conn-id body)) str not-empty)))
+
+(def ^:private rate-limit-interceptor
+  {:name  ::rate-limit
+   :enter (fn [ctx]
+            (let [request (:request ctx)
+                  ip      (client-ip request)
+                  cid     (envelope-conn-id request)
+                  ip-ok?  (rate-limit/allow? :ip ip)
+                  cid-ok? (or (nil? cid) (rate-limit/allow? :conn cid))]
+              (if (and ip-ok? cid-ok?)
+                ctx
+                (assoc ctx :response
+                       {:status  429
+                        :headers {"Content-Type" "application/json"
+                                  "Retry-After"  "1"}
+                        :body    "{\"status\":\"error\",\"reason\":\"rate-limited\"}"}))))})
+
+(defn- request-csrf-token
+  "Pull the CSRF token from either the X-Wun-CSRF header (preferred,
+   used by clients that can set custom headers) or the envelope's
+   `:csrf-token` field. Both are accepted because EventSource can't
+   set custom headers on the SSE stream -- the same constraint
+   doesn't apply to /intent POSTs but symmetry is friendlier."
+  [request]
+  (or (get-in request [:headers "x-wun-csrf"])
+      (let [body (or (:transit-params request) (:json-params request))]
+        (:csrf-token body))))
+
+(def ^:private csrf-interceptor
+  {:name  ::csrf
+   :enter (fn [ctx]
+            (let [request (:request ctx)
+                  cid     (envelope-conn-id request)
+                  ;; Same binding logic as on-stream-ready: prefer the
+                  ;; session token if present, otherwise fall back to
+                  ;; the conn-id. The session token comes from
+                  ;; X-Wun-Session header or the request body.
+                  session-token (or (get-in request [:headers "x-wun-session"])
+                                    (let [body (or (:transit-params request)
+                                                   (:json-params request))]
+                                      (:session-token body)))
+                  binding-key   (or session-token cid)
+                  token         (request-csrf-token request)]
+              (cond
+                (nil? binding-key)
+                ;; No conn-id and no session token -- can't validate.
+                ;; Reject so a malicious page can't trickle intents through.
+                (do (telemetry/emit! :wun/csrf.miss
+                                     {:reason :no-binding-key})
+                    (assoc ctx :response
+                           {:status 403
+                            :headers {"Content-Type" "application/json"}
+                            :body "{\"status\":\"error\",\"reason\":\"csrf-missing-binding\"}"}))
+
+                (csrf/valid? binding-key token)
+                ctx
+
+                :else
+                (do (telemetry/emit! :wun/csrf.miss
+                                     {:conn-id cid :reason :invalid-token})
+                    (assoc ctx :response
+                           {:status 403
+                            :headers {"Content-Type" "application/json"}
+                            :body "{\"status\":\"error\",\"reason\":\"csrf-invalid\"}"})))))})
+
 (defn- intent-handler [request]
-  (let [[envelope fmt]            (request->envelope+fmt request)
+  (let [start                     (System/nanoTime)
+        [envelope fmt]            (request->envelope+fmt request)
         {:keys [intent params id]} envelope
         conn-id                    (coerce-conn-id (:conn-id envelope))
         cached                     (some-> id state/cached-intent)]
+    (telemetry/emit! :wun/intent.received
+                     {:conn-id conn-id :intent intent :id id})
     (cond
       ;; Idempotency: a duplicate intent id (client retried after a
       ;; flaky network) gets the same response without re-running the
@@ -322,6 +450,8 @@
       ;; flat under load.
       cached
       (do
+        (telemetry/emit! :wun/intent.dedup
+                         {:conn-id conn-id :intent intent :id id})
         (log/debugf "wun: dedup'd intent id=%s intent=%s" id intent)
         (response fmt 200 cached))
 
@@ -332,6 +462,9 @@
                      :ok    {:status :ok :resolves-intent id}
                      :error {:status :error :resolves-intent id
                              :error  (:error result)})]
+        (telemetry/emit! :wun/intent.framework
+                         {:conn-id conn-id :intent intent :id id
+                          :status  (:status result)})
         (when id (state/cache-intent! id body))
         (case (:status result)
           :ok    (response fmt 200 body)
@@ -340,6 +473,9 @@
       :else
       (if-let [err (intents/validate-params intent params)]
         (let [body {:status :error :resolves-intent id :error err}]
+          (telemetry/emit! :wun/intent.rejected
+                           {:conn-id conn-id :intent intent :id id
+                            :reason  :validation})
           (when id (state/cache-intent! id body))
           (response fmt 400 body))
         (do
@@ -351,9 +487,33 @@
           ;; doesn't have a "broadcast to everyone" affordance.
           (state/swap-state-for! conn-id intents/apply-intent intent params)
           (broadcast-to-conn! conn-id id)
-          (let [body {:status :ok :resolves-intent id}]
+          (let [body {:status :ok :resolves-intent id}
+                duration-ms (long (/ (- (System/nanoTime) start) 1e6))]
+            (telemetry/emit! :wun/intent.applied
+                             {:conn-id conn-id :intent intent :id id
+                              :duration-ms duration-ms})
             (when id (state/cache-intent! id body))
             (response fmt 200 body)))))))
+
+;; ---------------------------------------------------------------------------
+;; Session rotation endpoint. Issues a fresh session token and revokes
+;; the old one. The CSRF interceptor still gates access -- a request
+;; with no valid CSRF token can't rotate a session it doesn't legitimately
+;; own. Apps wire `register-rotation-handler!` to update their users
+;; table when the new token is minted.
+
+(defn- session-rotate-handler [request]
+  (let [body  (or (:transit-params request) (:json-params request))
+        old   (or (get-in request [:headers "x-wun-session"])
+                  (:session-token body))
+        fmt   (if (:transit-params request) :transit :json)]
+    (if (str/blank? old)
+      (response fmt 400 {:status :error :reason :missing-session-token})
+      (let [new-tok (session/rotate! old)
+            new-csrf (csrf/issue new-tok)]
+        (response fmt 200 {:status :ok
+                           :session-token new-tok
+                           :csrf-token    new-csrf})))))
 
 ;; ---------------------------------------------------------------------------
 ;; WebFrame fallback endpoint.
@@ -505,8 +665,16 @@
   (route/expand-routes
    #{["/wun"    :get  (sse/start-event-stream on-stream-ready)
       :route-name :wun-stream]
-     ["/intent" :post [(body-params/body-params) intent-handler]
+     ["/intent" :post [(body-params/body-params)
+                       rate-limit-interceptor
+                       csrf-interceptor
+                       intent-handler]
       :route-name :wun-intent]
+     ["/session/rotate" :post [(body-params/body-params)
+                               rate-limit-interceptor
+                               csrf-interceptor
+                               session-rotate-handler]
+      :route-name :wun-session-rotate]
      ["/healthz" :get  healthz-handler  :route-name :wun-healthz]
      ["/web-frames/:key"        :get web-frame-handler :route-name :wun-web-frame]
      ["/web-frames/:key/:token" :get web-frame-handler :route-name :wun-web-frame-token]}))
@@ -546,12 +714,19 @@
          (.setDaemon true))))))
 
 (defonce ^:private gc-handle (atom nil))
+(defonce ^:private heartbeat-handle (atom nil))
 
 (defn- probe! [ch]
   ;; Push an SSE comment frame so Pedestal attempts a write and
   ;; surfaces dead sockets. Comments (": ...\n\n") are ignored by the
   ;; EventSource spec, so the client never sees them.
   (a/offer! ch {:data ":wun-probe"}))
+
+(defn- send-heartbeat! [ch]
+  (let [fmt  (state/fmt ch)
+        env  (heartbeat/ping-envelope (System/currentTimeMillis))
+        data (wire/encode-envelope fmt env)]
+    (a/offer! ch {:name "heartbeat" :data data})))
 
 (defn- gc-tick! []
   (let [before    (state/connection-count)
@@ -564,9 +739,19 @@
         after     (state/connection-count)]
     (log/debugf "wun: gc tick (before=%d evicted=%d after=%d)"
                 before evicted-1 after)
+    ;; Lazily evict idle rate-limit buckets and expired session-revoke
+    ;; entries on the same tick so we don't need a separate sweeper.
+    (rate-limit/evict-idle!)
+    (session/purge-expired!)
     (when (pos? evicted-1)
+      (telemetry/emit! :wun/disconnect {:reason :gc-evicted :n evicted-1})
       (log/infof "wun: gc'd %d closed connection(s) (%d remain)"
                  evicted-1 after))))
+
+(defn- heartbeat-tick! []
+  (let [live (keys @state/connections)]
+    (doseq [ch live] (send-heartbeat! ch))
+    (heartbeat/record-tick! (count live))))
 
 (defn- start-gc! [interval-secs]
   (when-let [h @gc-handle] (.cancel ^java.util.concurrent.ScheduledFuture h false))
@@ -577,10 +762,23 @@
                                 ^long interval-secs
                                 TimeUnit/SECONDS)))
 
+(defn- start-heartbeat! [interval-secs]
+  (when-let [h @heartbeat-handle]
+    (.cancel ^java.util.concurrent.ScheduledFuture h false))
+  (reset! heartbeat-handle
+          (.scheduleAtFixedRate gc-pool
+                                ^Runnable heartbeat-tick!
+                                ^long interval-secs
+                                ^long interval-secs
+                                TimeUnit/SECONDS)))
+
 (defn- stop-gc! []
   (when-let [h @gc-handle]
     (.cancel ^java.util.concurrent.ScheduledFuture h false)
-    (reset! gc-handle nil)))
+    (reset! gc-handle nil))
+  (when-let [h @heartbeat-handle]
+    (.cancel ^java.util.concurrent.ScheduledFuture h false)
+    (reset! heartbeat-handle nil)))
 
 (defn- env-port []
   (when-let [s (System/getenv "PORT")]
@@ -605,6 +803,7 @@
        (println (str "  serving static files from " (.getPath resolved-static))))
      (println (str "  listening on " resolved-host ":" resolved-port))
      (start-gc! gc-interval-secs)
+     (start-heartbeat! (heartbeat/interval-secs))
      (-> sm http/create-server http/start))))
 
 (defn stop! [server]

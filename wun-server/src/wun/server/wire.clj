@@ -63,10 +63,20 @@
 ;; ---------------------------------------------------------------------------
 ;; Envelopes
 
+(def envelope-version
+  "Current wire envelope version. Phase 1 ships v1; phase 2 bumps to v2
+   for key-aware list diffing. Servers serve clients at the version
+   they negotiate at connect (header `X-Wun-Envelope` / query
+   `?envelope=`); absent negotiation, the server defaults to the
+   current version. Clients compare the version on receive and either
+   downgrade rendering or refuse to apply the envelope."
+  1)
+
 (defn patch-envelope
   "Build the SSE envelope: a (possibly empty) `:patches` vector and
    `:status :ok`, plus optional `extras` keys:
 
+     :envelope-version always present; defaults to current
      :resolves-intent  the UUID of the intent this envelope confirms
      :state            current screen state, mirrored client-side so
                        optimistic morphs can predict against the same
@@ -76,14 +86,24 @@
                        intents (navigate / pop) to the right connection
      :screen-stack     vector of screen keys for this connection; top
                        is the currently-rendered screen. Updated when
-                       the client (or a server-side rule) pushes / pops"
+                       the client (or a server-side rule) pushes / pops
+     :presentations    per-screen presentation hint (`:push` / `:modal`)
+     :meta             page-level metadata (title / description / etc.)
+     :csrf-token       on first connect, the CSRF token bound to this
+                       session; the client echoes it on /intent POSTs
+     :resync?          true when this envelope is a backpressure-driven
+                       full re-render rather than an incremental patch"
   ([patches] (patch-envelope patches nil))
   ([patches extras]
-   (merge {:patches (vec patches) :status :ok}
+   (merge {:envelope-version envelope-version
+           :patches          (vec patches)
+           :status           :ok}
           (some-> extras (select-keys [:resolves-intent :state
                                        :conn-id :screen-stack
                                        :presentations
-                                       :meta])))))
+                                       :meta
+                                       :csrf-token
+                                       :resync?])))))
 
 (defn encode-envelope
   "Encode an envelope using the given wire `fmt` (`:transit` or `:json`)."
