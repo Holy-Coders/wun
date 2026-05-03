@@ -87,7 +87,7 @@ Three macros. That's the entire framework API:
               [:myapp/Card {:title "..."} "..."]])})
 
 ;; An intent is a Malli-typed action with a pure morph.
-(definent :myapp/log-in
+(defintent :myapp/log-in
   {:params [:map [:email :string] [:password :string]]
    :morph (fn [state {:keys [email]}] (assoc state :user email))})
 ```

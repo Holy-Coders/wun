@@ -25,7 +25,7 @@ state mutation in Wun goes through an intent.
    replace the placeholder:
 
    ```clojure
-   (definent :myapp/mark-done
+   (defintent :myapp/mark-done
      {:params [:map [:id :uuid]]
       :morph  (fn [state {:keys [id]}]
                 (update state :todos

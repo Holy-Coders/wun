@@ -134,7 +134,7 @@ deliberately has no `broadcast-to-all-conns` affordance for it.
 When you do need it, the recipe is:
 
 ```clojure
-(definent :myapp/post-message
+(defintent :myapp/post-message
   {:params [:map [:body :string]]
    :morph
    (fn [state {:keys [body]}]

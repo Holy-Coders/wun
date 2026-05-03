@@ -200,7 +200,7 @@ transport- and view-layer only:
 
 - The wire format is identical (transit-json patch envelopes, namespaced
   Hiccup component trees, intent envelopes with UUIDs).
-- The intent semantics are identical (`definent` registers a `:morph`,
+- The intent semantics are identical (`defintent` registers a `:morph`,
   applied server-authoritatively, broadcasts a full tree).
 - The component vocabulary is identical (`:wun/Stack`, `:wun/Text`,
   `:wun/Button`, with `defmulti` dispatch on the keyword).
@@ -212,7 +212,7 @@ touching the wire format or the brief's API surface.
 ## Working principles
 
 - The macros define the universe -- `defcomponent` / `defscreen` /
-  `definent`. Push back hard before adding API surface.
+  `defintent`. Push back hard before adding API surface.
 - Framework code uses the same APIs as user code. No privileged path.
 - Intent definitions over framework knobs. Behavior in intent metadata,
   not config or middleware stacks.
@@ -262,7 +262,7 @@ identically.
 
 - **Phase 0** -- spike. Validate the loop feels right. *Done.*
 - **Phase 1** -- server foundations + web client.
-  - **1.A** open registries via shared `defcomponent`/`defscreen`/`definent`.
+  - **1.A** open registries via shared `defcomponent`/`defscreen`/`defintent`.
     *Done.*
   - **1.B** tree diffing per connection; path-aware patch ops on the
     client. Diff + apply live in shared `wun.diff` (cljc) so producer

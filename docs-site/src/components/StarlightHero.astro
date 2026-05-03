@@ -11,10 +11,16 @@
  *
  * Wired in via `astro.config.mjs` → starlight.components.Hero.
  *
+ * The `<style>` block at the bottom is copied verbatim from upstream
+ * Hero.astro. Astro scoped styles only apply to the .astro file that
+ * declares them, so the upstream styles do *not* leak into this
+ * override — without re-declaring them here, `.hero` / `.stack` /
+ * `.copy` / `.actions` lose all layout, the inner divs default to
+ * `flex-direction: row` (via `sl-flex`), and the hero renders with
+ * the title / tagline / buttons running sideways.
+ *
  * Keep this file in sync with the upstream Hero whenever Starlight
- * is upgraded — the rest of the markup is intentionally unchanged so
- * the styles in node_modules/@astrojs/starlight/components/Hero.astro
- * keep targeting the same DOM (we keep the wrapper class names).
+ * is upgraded — both the markup and the style block need to track.
  */
 
 import { Image } from "astro:assets";
@@ -91,3 +97,80 @@ const fixHref = (href: string) =>
     )}
   </div>
 </div>
+
+<style>
+  .hero {
+    display: grid;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .hero > img,
+  .hero > .hero-html {
+    object-fit: contain;
+    width: min(70%, 20rem);
+    height: auto;
+    margin-inline: auto;
+  }
+
+  .stack {
+    flex-direction: column;
+    gap: clamp(1.5rem, calc(1.5rem + 1vw), 2rem);
+    text-align: center;
+  }
+
+  .copy {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .copy > * {
+    max-width: 50ch;
+  }
+
+  h1 {
+    font-size: clamp(var(--sl-text-3xl), calc(0.25rem + 5vw), var(--sl-text-6xl));
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+
+  .tagline {
+    font-size: clamp(var(--sl-text-base), calc(0.0625rem + 2vw), var(--sl-text-xl));
+    color: var(--sl-color-gray-2);
+  }
+
+  .actions {
+    gap: 1rem 2rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  @media (min-width: 50rem) {
+    .hero {
+      grid-template-columns: 7fr 4fr;
+      gap: 3%;
+      padding-block: clamp(2.5rem, calc(1rem + 10vmin), 10rem);
+    }
+
+    .hero > img,
+    .hero > .hero-html {
+      order: 2;
+      width: min(100%, 25rem);
+    }
+
+    .stack {
+      text-align: start;
+    }
+
+    .copy {
+      align-items: flex-start;
+    }
+
+    .actions {
+      justify-content: flex-start;
+    }
+  }
+</style>

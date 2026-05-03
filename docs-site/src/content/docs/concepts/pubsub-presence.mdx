@@ -93,7 +93,7 @@ impossible.
 (require '[wun.server.broadcast :as bc])
 
 ;; At connect, register interest.
-(definent :chat/join
+(defintent :chat/join
   {:params [:map [:room :keyword]]
    :morph
    (fn [state {:keys [room]}]
@@ -108,7 +108,7 @@ impossible.
 
 ;; Anywhere -- another intent, a server-only background job, an
 ;; admin command -- publish to fan out.
-(definent :chat/say
+(defintent :chat/say
   {:params [:map [:room :keyword] [:text :string]]
    :morph
    (fn [state {:keys [room text]}]

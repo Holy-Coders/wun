@@ -35,7 +35,7 @@ A typical Wun feature touches exactly five places:
 |-------------------------|-------------------------------------|--------------------------------------------------|
 | persistence             | `resources/migrations/<NNNN>_*.sql` | schema (or `resources/datomic/schema-*.edn`)     |
 | server-only data ops    | `src/myapp/server/<feature>_store.clj` | SQL / `d/transact` lives here, nowhere else  |
-| cross-platform feature  | `src/myapp/<feature>.cljc`          | `definent` + `defscreen`, with reader conditionals |
+| cross-platform feature  | `src/myapp/<feature>.cljc`          | `defintent` + `defscreen`, with reader conditionals |
 | boot wiring             | `src/myapp/server/main.clj`         | `:require` the new ns + preload state             |
 | nav                     | `src/myapp/screens.cljc`            | link to the new screen from somewhere visible     |
 
@@ -105,7 +105,7 @@ exact shape.
 
 ## 3. The cross-platform feature ns
 
-The same `definent` runs on server (authoritatively, against the
+The same `defintent` runs on server (authoritatively, against the
 DB) and on the client (optimistically, against the in-memory
 predicted state). A reader conditional is what lets one form do
 both:
@@ -113,11 +113,11 @@ both:
 ```clojure
 ;; src/myapp/tasks.cljc
 (ns myapp.tasks
-  (:require [wun.intents :refer [definent]]
+  (:require [wun.intents :refer [defintent]]
             [wun.screens :refer [defscreen]]
             #?(:clj [myapp.server.tasks-store :as store])))
 
-(definent :myapp/add-task
+(defintent :myapp/add-task
   {:params [:map [:title [:string {:min 1}]]]
    :morph
    (fn [state {:keys [title]}]
@@ -292,7 +292,7 @@ output let your platform of choice know the app is alive.
 The five-file shape skips a lot of plumbing common in other stacks.
 You didn't write:
 
-- a controller / route handler (the `definent` is the controller)
+- a controller / route handler (the `defintent` is the controller)
 - a websocket / long-poll bridge (Wun's SSE handles it)
 - separate validators for client and server (Malli runs both)
 - separate JSON serialization for the wire (transit-json built in)

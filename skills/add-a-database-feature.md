@@ -63,17 +63,17 @@ shows through.
 
 ### 3. Cross-platform feature ns (`.cljc`)
 
-Mirror `src/myapp/notes.cljc`: a `definent` that delegates to the
+Mirror `src/myapp/notes.cljc`: a `defintent` that delegates to the
 store via a `#?(:clj ...)` reader conditional, and a `defscreen`
 that renders `(:tasks state)`:
 
 ```clojure
 (ns myapp.tasks
-  (:require [wun.intents :refer [definent]]
+  (:require [wun.intents :refer [defintent]]
             [wun.screens :refer [defscreen]]
             #?(:clj [myapp.server.tasks-store :as store])))
 
-(definent :myapp/add-task
+(defintent :myapp/add-task
   {:params [:map [:title [:string {:min 1}]]]
    :morph (fn [state {:keys [title]}]
             #?(:clj  (do (store/add-task! title)

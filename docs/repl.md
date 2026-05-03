@@ -19,7 +19,7 @@ Drops you in `user`. Common moves:
 ;; ... edit any cljc/clj/cljs file in the monorepo ...
 (require 'wun.app.counter :reload)   ; or any namespace you changed
 ;; The next intent re-renders against the fresh code.
-;; defcomponent / defscreen / definent registries are open --
+;; defcomponent / defscreen / defintent registries are open --
 ;; redefining is idempotent, no restart needed.
 
 (core/stop!)
@@ -78,7 +78,7 @@ caret position) across reloads.
 
 ## Common pitfalls
 
-- **Stale registries**: `defcomponent` / `defscreen` / `definent` are
+- **Stale registries**: `defcomponent` / `defscreen` / `defintent` are
   open — re-`require :reload` the namespace and the next intent
   picks up the change. The web client also runs the morph; if the
   client state diverges from server, hit refresh.

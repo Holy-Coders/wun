@@ -6,12 +6,12 @@
    The morph appends optimistically on the client (so typing a note
    feels instant); on the server it persists to the DB and re-reads
    the table to fold authoritative state. Reader conditionals are
-   what let the same `definent` form do both."
-  (:require [wun.intents :refer [definent]]
+   what let the same `defintent` form do both."
+  (:require [wun.intents :refer [defintent]]
             [wun.screens :refer [defscreen]]
             #?(:clj [myapp.server.notes-store :as notes-store])))
 
-(definent :myapp/add-note
+(defintent :myapp/add-note
   {:params [:map [:body [:string {:min 1}]]]
    :morph
    (fn [state {:keys [body]}]

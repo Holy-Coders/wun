@@ -45,7 +45,7 @@ src/wun/server/
   core.clj      ;; entry point, lifecycle
   http.clj      ;; JDK HttpServer transport, SSE, static, CORS
   state.clj     ;; app-state atom + connection set
-  intents.clj   ;; definent macro + registry + apply-intent
+  intents.clj   ;; defintent macro + registry + apply-intent
   render.clj    ;; phase-0 hardcoded screen
   wire.clj      ;; transit + patch envelope helpers
 ```

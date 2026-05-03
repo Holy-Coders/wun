@@ -8,19 +8,19 @@
    side effects (network calls, DB writes) live behind the registered
    form spec's `:handler`, run server-side only by `wun.forms/run-submit`."
   (:require [wun.forms :as forms]
-            [wun.intents :refer [definent]]))
+            [wun.intents :refer [defintent]]))
 
-(definent :wun.forms/change
+(defintent :wun.forms/change
   {:params [:map [:form keyword?] [:field keyword?] [:value any?]]
    :morph  (fn [state {:keys [form field value]}]
              (forms/change state form field value))})
 
-(definent :wun.forms/touch
+(defintent :wun.forms/touch
   {:params [:map [:form keyword?] [:field keyword?]]
    :morph  (fn [state {:keys [form field]}]
              (forms/touch state form field))})
 
-(definent :wun.forms/reset
+(defintent :wun.forms/reset
   {:params [:map [:form keyword?]]
    :morph  (fn [state {:keys [form]}]
              (forms/assoc-form state form (forms/empty-form)))})
@@ -39,7 +39,7 @@
 ;; reader-conditional cljs branch (and registering it in the clj
 ;; branch).
 
-(definent :wun.forms/submit
+(defintent :wun.forms/submit
   {:params [:map [:form keyword?]]
    :morph  (fn [state {:keys [form]}]
              (forms/run-submit state form))})

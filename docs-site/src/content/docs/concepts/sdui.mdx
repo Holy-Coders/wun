@@ -44,7 +44,7 @@ resulting tree change to every open SSE connection.
 - The component vocabulary (`defcomponent`).
 - The screens (`defscreen`) — paths, render fns, page metadata,
   presentation hints.
-- The intents (`definent`) — schemas and morphs.
+- The intents (`defintent`) — schemas and morphs.
 - All persistence + side effects.
 
 ## What the client owns
@@ -62,7 +62,7 @@ in the wire.
 
 ## The optimistic side
 
-The same `:morph` fn from `definent` runs on **both** server (when
+The same `:morph` fn from `defintent` runs on **both** server (when
 an intent POST lands) and client (when the user dispatches). The
 client computes a predicted state immediately, re-renders, and POSTs
 in parallel. When the server's confirmation envelope arrives tagged

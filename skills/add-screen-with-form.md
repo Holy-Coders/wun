@@ -34,7 +34,7 @@ has both rendering AND state mutation triggered by user input.
    the morph to update state. For a sign-up form:
 
    ```clojure
-   (definent :myapp/submit-sign-up
+   (defintent :myapp/submit-sign-up
      {:params [:map [:email :string] [:password :string]]
       :morph  (fn [state {:keys [email]}]
                 (assoc state :user {:email email}))})
@@ -44,7 +44,7 @@ has both rendering AND state mutation triggered by user input.
    updates predicted state as the user types:
 
    ```clojure
-   (definent :myapp/set-email
+   (defintent :myapp/set-email
      {:params [:map [:value :string]]
       :morph  (fn [state {:keys [value]}] (assoc state :draft-email value))})
    ```
@@ -73,7 +73,7 @@ has both rendering AND state mutation triggered by user input.
    contract.
 
 6. **Require the new namespaces** from the server's entry namespace
-   so `defcomponent`/`defscreen`/`definent` side effects fire on
+   so `defcomponent`/`defscreen`/`defintent` side effects fire on
    load:
 
    ```clojure
