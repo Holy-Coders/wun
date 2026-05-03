@@ -8,6 +8,13 @@
 // Mermaid diagrams render at build time via rehype-mermaid (Playwright
 // under the hood). No client-side mermaid runtime ships.
 //
+// Mermaid is opt-in via WUN_MERMAID=1 because Playwright's bundled
+// Chromium isn't available in every CI / local environment, and a
+// missing Chromium taking the whole site build down is a far worse
+// outcome than diagrams falling back to plain code blocks. CI sets
+// WUN_MERMAID=1 after running `playwright install --with-deps chromium`;
+// local dev gets readable code-block fallbacks for free.
+//
 // Deployed to GitHub Pages under https://holy-coders.github.io/wun/
 // so site + base reflect that. If you switch to a custom domain,
 // drop the `base` and unset GH_PAGES.
@@ -20,6 +27,7 @@ import { fileURLToPath } from "node:url";
 
 const onGitHubPages = process.env.GH_PAGES === "1";
 const base          = onGitHubPages ? "/wun" : "";
+const mermaidEnabled = process.env.WUN_MERMAID === "1";
 
 export default defineConfig({
   site:    "https://holy-coders.github.io",
@@ -41,29 +49,31 @@ export default defineConfig({
     // Prefix every absolute Markdown link with `base` so /wun lands.
     // No-op locally (base = "").
     remarkPlugins: [[remarkBasePrefix, { base }]],
-    rehypePlugins: [
-      [rehypeMermaid, {
-        // Inline SVG keeps the page zero-JS and lets our custom.css
-        // tweak diagram size/centering. The "neutral" theme reads
-        // cleanly in both light and dark mode.
-        // Requires `npx playwright install --with-deps chromium` once
-        // (the docs CI workflow runs that step before the build).
-        strategy: "inline-svg",
-        mermaidConfig: {
-          theme: "neutral",
-          themeVariables: {
-            primaryColor:       "#cce0f5",
-            primaryTextColor:   "#0a1020",
-            primaryBorderColor: "#0a66c2",
-            lineColor:          "#0a66c2",
-            secondaryColor:     "#e7efff",
-            tertiaryColor:      "#f4f8fd",
-            fontSize:           "14px",
-            fontFamily:         "ui-sans-serif, system-ui, -apple-system, sans-serif",
-          },
-        },
-      }],
-    ],
+    rehypePlugins: mermaidEnabled
+      ? [
+          [rehypeMermaid, {
+            // Inline SVG keeps the page zero-JS and lets our custom.css
+            // tweak diagram size/centering. The "neutral" theme reads
+            // cleanly in both light and dark mode.
+            // Requires `npx playwright install --with-deps chromium`
+            // (the docs CI workflow runs that step before the build).
+            strategy: "inline-svg",
+            mermaidConfig: {
+              theme: "neutral",
+              themeVariables: {
+                primaryColor:       "#cce0f5",
+                primaryTextColor:   "#0a1020",
+                primaryBorderColor: "#0a66c2",
+                lineColor:          "#0a66c2",
+                secondaryColor:     "#e7efff",
+                tertiaryColor:      "#f4f8fd",
+                fontSize:           "14px",
+                fontFamily:         "ui-sans-serif, system-ui, -apple-system, sans-serif",
+              },
+            },
+          }],
+        ]
+      : [],
   },
 
   integrations: [

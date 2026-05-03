@@ -27,7 +27,8 @@
     (is (some? @seen))))
 
 (deftest custom-formatter-is-honoured
-  (let [orig @#'errors/error-formatter]
+  (let [formatter-atom (deref #'errors/error-formatter)
+        orig-fn        @formatter-atom]
     (try
       (errors/set-error-formatter! (fn [_t] "REDACTED"))
       (let [render (fn [_] (throw #?(:clj  (RuntimeException. "leaky")
@@ -35,4 +36,4 @@
             out    (errors/safe-render render {} nil)]
         (is (= "REDACTED" (:reason (second out)))))
       (finally
-        (reset! @#'errors/error-formatter @orig)))))
+        (errors/set-error-formatter! orig-fn)))))
