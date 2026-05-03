@@ -13,6 +13,12 @@
 ;; relative to the file declaring them, so once you fetch wun via
 ;; :git, wun-server's own ../wun-shared reference resolves inside
 ;; the cached clone rather than your project tree.
+;;
+;; Dogfooding (developing Wun itself while building this app):
+;;   1. cd /path/to/wun && wun link    ;; register the wun checkout
+;;   2. cd here          && wun link    ;; rewrite the entries below to
+;;                                      ;; absolute :local/root paths
+;; `wun unlink` from this dir restores the form below.
 
 {:paths ["src" "resources"]
  :deps  {;; -- the Wun framework --
