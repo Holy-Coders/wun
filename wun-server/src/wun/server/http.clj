@@ -38,9 +38,11 @@
             [wun.screens           :as screens]
             [wun.theme             :as theme]
             [wun.server.backpressure :as backpressure]
+            [wun.server.broadcast  :as broadcast]
             [wun.server.csrf       :as csrf]
             [wun.server.heartbeat  :as heartbeat]
             [wun.server.html       :as wun-html]
+            [wun.server.presence   :as presence]
             [wun.server.rate-limit :as rate-limit]
             [wun.server.session    :as session]
             [wun.server.state      :as state]
@@ -143,7 +145,9 @@
 
            (state/closed? ch)
            (do (state/remove-connection! ch)
-               (when conn-id (backpressure/drop-conn! conn-id))
+               (when conn-id
+                 (backpressure/drop-conn! conn-id)
+                 (presence/leave-all! conn-id))
                (telemetry/emit! :wun/disconnect
                                 {:conn-id conn-id :reason :evicted})
                (log/debugf "wun: evicted closed connection (%d remain)"
@@ -773,14 +777,21 @@
     (a/offer! ch {:name "heartbeat" :data data})))
 
 (defn- gc-tick! []
-  (let [before    (state/connection-count)
+  (let [before        (state/connection-count)
+        ;; Snapshot conn-ids about to be evicted so we can fan out
+        ;; presence/leave broadcasts before the slice goes away.
+        about-to-evict (->> @state/connections
+                            (filter (fn [[ch _]] (state/closed? ch)))
+                            (keep (fn [[_ v]] (:conn-id v)))
+                            set)
         ;; First, evict anything Pedestal has already closed.
-        evicted-1 (state/evict-closed!)
+        evicted-1     (state/evict-closed!)
+        _             (doseq [cid about-to-evict] (presence/leave-all! cid))
         ;; Then probe what's left so the next tick can detect any
         ;; sockets that have died since the last write attempt.
-        live      (keys @state/connections)
-        _         (doseq [ch live] (probe! ch))
-        after     (state/connection-count)]
+        live          (keys @state/connections)
+        _             (doseq [ch live] (probe! ch))
+        after         (state/connection-count)]
     (log/debugf "wun: gc tick (before=%d evicted=%d after=%d)"
                 before evicted-1 after)
     ;; Lazily evict idle rate-limit buckets and expired session-revoke
@@ -846,6 +857,10 @@
      (when resolved-static
        (println (str "  serving static files from " (.getPath resolved-static))))
      (println (str "  listening on " resolved-host ":" resolved-port))
+     ;; Wire broadcast subscribers back to the per-conn re-broadcast
+     ;; pump so a published message triggers a fresh patch envelope.
+     (broadcast/register-rebroadcast-fn!
+      (fn [cid] (broadcast-to-conn! cid)))
      (start-gc! gc-interval-secs)
      (start-heartbeat! (heartbeat/interval-secs))
      (-> sm http/create-server http/start))))

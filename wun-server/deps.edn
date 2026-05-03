@@ -47,4 +47,5 @@
                                "-n" "wun.server.session-test"
                                "-n" "wun.server.upload-test"
                                "-n" "wun.server.pubsub-test"
-                               "-n" "wun.server.presence-test"]}}}
+                               "-n" "wun.server.presence-test"
+                               "-n" "wun.server.broadcast-test"]}}}
