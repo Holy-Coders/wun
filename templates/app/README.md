@@ -9,6 +9,19 @@ the fastest path to a working dev loop and matches the brief's
 swap to remote refs (Git deps / SwiftPM URL / JitPack) once the framework
 is stable enough that you'd rather pin to a tag than develop against HEAD.
 
+If you want to **dogfood Wun** (edit it while building this app), the
+CLI ships an editable-install workflow modeled on `npm link`:
+
+```bash
+cd /path/to/wun && wun link        # register the wun checkout
+cd /path/to/myapp && wun link      # rewrite this app's deps.edn at it
+wun doctor                          # verify everything resolves
+wun unlink                          # restore deps.edn when you're done
+```
+
+Re-running `wun link` from a different wun checkout switches both the
+CLI and any subsequently-linked apps to that checkout.
+
 ## Layout
 
 ```

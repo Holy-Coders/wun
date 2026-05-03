@@ -8,7 +8,9 @@
 ;;   add component <ns>/<Name>     scaffold a multi-platform component
 ;;   add screen    <ns>/<name>     scaffold a screen .cljc
 ;;   add intent    <ns>/<name>     scaffold an intent .cljc
-;;   new <app-name>                copy templates/component-pack/ into ../<app>/
+;;   new <app-name> [--link]       copy templates/app/ into ../<app>/
+;;   link                          register the cwd checkout (or link an app to it)
+;;   unlink                        unregister checkout (or restore an app's deps.edn)
 ;;   help [cmd]                    short usage
 ;;
 ;; Resolves the wun monorepo root by walking up from $PWD looking for
@@ -19,6 +21,7 @@
 (ns wun.cli
   (:require [babashka.fs       :as fs]
             [babashka.process  :as p]
+            [clojure.pprint    :as pprint]
             [clojure.string    :as str]))
 
 ;; ---------------------------------------------------------------------------
@@ -79,18 +82,90 @@
 
 (def ^:private marker "wun-server/deps.edn")
 
-(defn- walk-up-for-marker [start]
+(defn- walk-up
+  "Walk parent dirs from `start` until `pred` returns truthy on a dir.
+   Returns the canonical string path or nil at root."
+  [start pred]
   (loop [dir (fs/canonicalize start)]
     (cond
-      (fs/exists? (fs/path dir marker)) (str dir)
-      (= (str dir) "/")                 nil
-      :else                             (recur (fs/parent dir)))))
+      (pred dir)        (str dir)
+      (= (str dir) "/") nil
+      :else             (recur (fs/parent dir)))))
+
+(defn- walk-up-for-marker [start]
+  (walk-up start #(fs/exists? (fs/path % marker))))
+
+;; ---------------------------------------------------------------------------
+;; Active editable Wun (~/.config/wun/active.edn)
+;;
+;; A "linked" wun checkout is the one a user currently develops against.
+;; `wun link` from inside a checkout writes its absolute path here; the
+;; CLI, the MCP server, and the templates all consult this file so an
+;; agent / app uses the same source tree the user is iterating on.
+;; install.sh writes this on a fresh install, so a default install is
+;; implicitly linked.
+;;
+;; Resolution order (most specific wins):
+;;   1. WUN_HOME env var
+;;   2. ~/.config/wun/active.edn :root
+;;   3. nil  (callers fall back to script-relative discovery)
+
+(def ^:private config-dir
+  (str (fs/path (or (System/getenv "XDG_CONFIG_HOME")
+                    (str (System/getenv "HOME") "/.config"))
+                "wun")))
+
+(def ^:private active-file
+  (str (fs/path config-dir "active.edn")))
+
+(defn- read-active []
+  (when (fs/exists? active-file)
+    (try (read-string (slurp active-file))
+         (catch Throwable _ nil))))
+
+(defn- write-active! [m]
+  (fs/create-dirs (fs/parent active-file))
+  (spit active-file (with-out-str (pprint/pprint m))))
+
+(defn- delete-active! []
+  (when (fs/exists? active-file) (fs/delete active-file)))
+
+(defn- active-wun-root
+  "Return the absolute path of the active editable Wun, or nil if none.
+   Validates that the path still contains the wun-server marker -- if a
+   user nuked their checkout, we return nil instead of a stale entry."
+  []
+  (let [candidate (or (System/getenv "WUN_HOME")
+                      (:root (read-active)))]
+    (when (and candidate (fs/exists? (fs/path candidate marker)))
+      (str (fs/canonicalize candidate)))))
+
+(defn- inside-wun-checkout? [dir]
+  (fs/exists? (fs/path dir marker)))
+
+(defn- looks-like-wun-app?
+  "True when `dir` has a deps.edn that mentions a wun/wun-* dep AND the
+   dir itself isn't a wun checkout (so we don't misclassify wun-server/)."
+  [dir]
+  (let [deps (fs/path dir "deps.edn")]
+    (and (fs/exists? deps)
+         (not (inside-wun-checkout? dir))
+         (boolean
+          (re-find #"wun/wun-(shared|server|web)"
+                   (try (slurp (str deps)) (catch Throwable _ "")))))))
+
+(defn- find-app-root [start]
+  (walk-up start looks-like-wun-app?))
 
 (defn- find-repo-root []
-  ;; First try $PWD (user invoked inside the monorepo); then fall
-  ;; back to the script's own location, which lets `wun new` work
-  ;; from any directory.
+  ;; Search order:
+  ;;   1. cwd's monorepo (user invoked inside wun)
+  ;;   2. the active linked checkout (user invoked inside an app
+  ;;      that's been `wun link`-ed -- so add/status/etc. operate
+  ;;      against the editable wun, not a local cache)
+  ;;   3. the script's own checkout (script-relative bootstrap)
   (or (walk-up-for-marker ".")
+      (active-wun-root)
       (when *file* (walk-up-for-marker (fs/parent *file*)))))
 
 (defn- repo-root []
@@ -147,10 +222,12 @@
                   (Integer/parseInt))]
     (and n (pos? n))))
 
-(defn- dev-mode?
+(defn- framework-dev-checkout?
   "True when the user is actively developing the wun framework itself
-   (vs. consuming it). We skip auto-upgrade prompts in dev mode --
-   they'd be noisy and would trip on uncommitted work."
+   (vs. consuming it): working tree dirty, on a non-master branch, or
+   ahead of upstream. We skip auto-upgrade prompts here -- they'd be
+   noisy and would trip on uncommitted work. Note: orthogonal to the
+   `wun link` editable-install workflow; both can be true at once."
   [root]
   (or (working-tree-dirty? root)
       (not (on-master? root))
@@ -241,6 +318,26 @@
                     "bb"       "brew install borkdude/brew/babashka"
                     "")))))
 
+(defn- canonical-or-nil
+  "Resolve `p` to its canonical absolute path, or return nil if the path
+   doesn't exist. (babashka.fs/canonicalize on some platforms returns
+   the lexical path for non-existent files; we explicitly guard that.)"
+  [p]
+  (when (fs/exists? p)
+    (try (str (fs/canonicalize p)) (catch Throwable _ nil))))
+
+(defn- app-deps-wun-paths
+  "Parse an app's deps.edn and return a seq of [sym local-root-path]
+   for each wun/wun-* :local/root entry. Regex-based -- handles deps
+   under :aliases just as well as top-level."
+  [deps-edn-path]
+  (let [text (try (slurp (str deps-edn-path)) (catch Throwable _ ""))
+        ;; Match `wun/wun-X {... :local/root "..." ...}` on a single
+        ;; line so we don't pick up multi-line examples in `;;`
+        ;; comment blocks. (See wun-dep-re for the same constraint.)
+        re   #"(wun/wun-(?:shared|server|web))[ \t]+\{[^{}\n\r]*:local/root\s+\"([^\"]+)\"[^{}\n\r]*\}"]
+    (for [[_ sym path] (re-seq re text)] [sym path])))
+
 (defn- cmd-doctor [_args]
   (step "checking dev environment")
   (check "java"    "java"    ["-version"])
@@ -256,7 +353,40 @@
     (doseq [d ["wun-server" "wun-shared" "wun-web" "wun-ios" "wun-android"]]
       (if (fs/exists? (fs/path root d))
         (ok "found " d)
-        (warn "missing " d)))))
+        (warn "missing " d))))
+  (println)
+  (step "editable install (wun link)")
+  (let [active (active-wun-root)
+        from   (cond
+                 (System/getenv "WUN_HOME")  "WUN_HOME"
+                 (:root (read-active))       (str active-file)
+                 :else                       nil)]
+    (cond
+      active   (ok "active editable Wun: " (c :bold active) "  " (c :dim (str "(" from ")")))
+      :else    (info "no editable Wun registered  "
+                     (c :dim "(run `wun link` from inside a wun checkout)"))))
+  (when-let [app-dir (find-app-root ".")]
+    (info "current app: " app-dir)
+    (let [active (active-wun-root)
+          entries (app-deps-wun-paths (fs/path app-dir "deps.edn"))]
+      (if (empty? entries)
+        (info "no wun/wun-* :local/root entries in deps.edn  "
+              (c :dim "(may be using :git/url -- not linked)"))
+        (doseq [[sym path] entries
+                :let [absolute (canonical-or-nil
+                                (if (str/starts-with? path "/")
+                                  path
+                                  (str (fs/path app-dir path))))]]
+          (cond
+            (nil? absolute)
+            (warn sym " -> " path "  " (c :red "(path does not exist)"))
+            (and active (str/starts-with? absolute active))
+            (ok sym " -> " absolute)
+            active
+            (warn sym " -> " absolute "  "
+                  (c :red "drift: active is ") (c :bold active))
+            :else
+            (info sym " -> " absolute "  " (c :dim "(no active link to compare)"))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; status -- per-component coverage matrix across server / web / iOS / Android
@@ -468,6 +598,201 @@
         (finally
           (p/destroy-tree shadow)
           (p/destroy-tree server))))))
+
+;; ---------------------------------------------------------------------------
+;; link / unlink
+;;
+;; `wun link` is mode-sensitive on cwd:
+;;
+;;   inside a wun checkout  ->  register THIS checkout as active.
+;;                              Re-symlink bin/wun onto PATH and write
+;;                              ~/.config/wun/active.edn.
+;;
+;;   inside a wun-app       ->  rewrite the app's deps.edn so each
+;;                              wun/wun-* :local/root points at the
+;;                              active checkout's absolute path. Save
+;;                              a one-shot .deps.edn.linkbak so unlink
+;;                              can restore the original (typically a
+;;                              :git/url + :git/tag form).
+;;
+;; `wun unlink` is the reverse. In an app: restore from the backup; if
+;; no backup, rewrite to a :git/url form using the active checkout's
+;; latest tag. In a wun checkout: drop active.edn (the symlink is left
+;; alone -- removing it would surprise users who only wanted to
+;; switch checkouts).
+
+(defn- writable-dir? [d]
+  (try (and (fs/exists? d)
+            (.canWrite (java.io.File. (str d))))
+       (catch Throwable _ false)))
+
+(defn- choose-bin-target
+  "Mirror install.sh:choose_target. Prefer /usr/local/bin if writable;
+   else ensure ~/.local/bin exists and use it. Returns the target path
+   string or nil if neither is available."
+  []
+  (cond
+    (writable-dir? "/usr/local/bin")
+    "/usr/local/bin/wun"
+
+    :else
+    (let [home    (System/getenv "HOME")
+          home-bin (str (fs/path home ".local" "bin"))]
+      (when home
+        (fs/create-dirs home-bin)
+        (str (fs/path home-bin "wun"))))))
+
+(defn- on-path? [bin-dir]
+  (let [path (or (System/getenv "PATH") "")]
+    (some #(= % bin-dir) (str/split path #":"))))
+
+(defn- install-symlink! [wun-root]
+  (if-let [target (choose-bin-target)]
+    (let [src (str (fs/path wun-root "bin" "wun"))]
+      (when (or (fs/sym-link? target) (fs/exists? target))
+        (fs/delete target))
+      (fs/create-sym-link target src)
+      (let [bin-dir (str (fs/parent target))]
+        (ok "symlinked " target " -> " src)
+        (when-not (on-path? bin-dir)
+          (warn bin-dir " is not on PATH; add it with:")
+          (println (str "    export PATH=\"" bin-dir ":$PATH\"")))))
+    (do (err "no writable bin dir found (tried /usr/local/bin and ~/.local/bin)")
+        (System/exit 2))))
+
+(def ^:private wun-sub-dirs
+  ;; Maps the deps coord symbol to its sub-project dir under the wun root.
+  {"wun/wun-shared" "wun-shared"
+   "wun/wun-server" "wun-server"
+   "wun/wun-web"    "wun-web"})
+
+;; Matches `wun/wun-shared { ... }` -- single-level, single-line map
+;; literal, no nested braces. The single-line constraint keeps us from
+;; matching multi-line examples in `;;` comment blocks. Standard
+;; `:local/root`/`:git/url` shapes fit. A multi-line dep map (rare in
+;; practice) is left alone and will surface as drift in `wun doctor`.
+(def ^:private wun-dep-re
+  #"(wun/wun-(?:shared|server|web))[ \t]+\{[^{}\n\r]*\}")
+
+(defn- relink-deps-text
+  "Rewrite each wun/wun-* dep map in `text` to point at `active-root`
+   via :local/root. Returns the new text."
+  [text active-root]
+  (str/replace text wun-dep-re
+    (fn [[_ sym]]
+      (str sym " {:local/root \"" active-root "/" (wun-sub-dirs sym) "\"}"))))
+
+(defn- unlink-deps-text
+  "Inverse: rewrite each wun/wun-* dep map to a :git/url form pinned to
+   `tag`. We don't have the sha at hand; users can fill it in or use
+   `wun release` workflow."
+  [text tag]
+  (str/replace text wun-dep-re
+    (fn [[_ sym]]
+      (str sym " {:git/url \"https://github.com/Holy-Coders/wun.git\""
+           " :git/tag \"" tag "\""
+           " :deps/root \"" (wun-sub-dirs sym) "\"}"))))
+
+(defn- snippet-ios [active-root]
+  (str "    .package(path: \"" active-root "/wun-ios\"),"))
+
+(defn- snippet-android [active-root]
+  (str "    includeBuild(\"" active-root "/wun-android\")"))
+
+(defn- print-platform-hints [active-root]
+  (info (c :dim "iOS: in ios/Package.swift, set the wun .package(...) to:"))
+  (println (str "      " (snippet-ios active-root)))
+  (info (c :dim "Android: in android/settings.gradle.kts, set:"))
+  (println (str "      " (snippet-android active-root))))
+
+(defn- cmd-link-register
+  "Register `wun-root` as the active editable Wun and re-symlink bin/wun."
+  [wun-root]
+  (let [prev (:root (read-active))]
+    (write-active! {:root        wun-root
+                    :linked-at   (now-secs)
+                    :linked-from (str (fs/canonicalize "."))
+                    :version     1})
+    (cond
+      (nil? prev)         (ok "registered active editable Wun: " (c :bold wun-root))
+      (= prev wun-root)   (info "active editable Wun unchanged: " wun-root)
+      :else               (do (ok "switched active editable Wun")
+                              (info "  was: " prev)
+                              (info "  now: " (c :bold wun-root)))))
+  (install-symlink! wun-root)
+  (println)
+  (info "to dogfood from an app: " (c :bold "cd <app> && wun link")))
+
+(defn- cmd-link-app
+  "Rewrite the app's deps.edn to point at the active editable Wun."
+  [app-dir]
+  (let [active (active-wun-root)]
+    (when-not active
+      (err "no active editable Wun -- run `wun link` from inside a wun checkout first")
+      (System/exit 2))
+    (let [deps-path (str (fs/path app-dir "deps.edn"))
+          backup    (str (fs/path app-dir ".deps.edn.linkbak"))
+          before    (slurp deps-path)
+          after     (relink-deps-text before active)]
+      (cond
+        (= before after)
+        (info "deps.edn already points at " active "  (no-op)")
+
+        :else
+        (do (when-not (fs/exists? backup)
+              (spit backup before)
+              (info "saved backup: .deps.edn.linkbak"))
+            (spit deps-path after)
+            (ok "rewrote deps.edn -> " (c :bold active))))
+      (println)
+      (print-platform-hints active))))
+
+(defn- cmd-link [_args]
+  (let [cwd      (str (fs/canonicalize "."))
+        checkout (walk-up-for-marker cwd)
+        app      (when-not checkout (find-app-root cwd))]
+    (cond
+      checkout (cmd-link-register checkout)
+      app      (cmd-link-app app)
+      :else    (do (err "run `wun link` inside a wun checkout (to register it)")
+                   (println "  or inside a wun-app dir (to link its deps.edn at the active checkout).")
+                   (System/exit 2)))))
+
+(defn- latest-tag [root]
+  (or (shell-out (git root "describe" "--tags" "--abbrev=0"))
+      "v0.1.0"))
+
+(defn- cmd-unlink-app [app-dir]
+  (let [deps-path (str (fs/path app-dir "deps.edn"))
+        backup    (str (fs/path app-dir ".deps.edn.linkbak"))]
+    (cond
+      (fs/exists? backup)
+      (do (spit deps-path (slurp backup))
+          (fs/delete backup)
+          (ok "restored deps.edn from .deps.edn.linkbak"))
+
+      :else
+      (let [active (active-wun-root)
+            tag    (or (some-> active latest-tag) "v0.1.0")
+            text   (slurp deps-path)
+            new    (unlink-deps-text text tag)]
+        (if (= text new)
+          (info "no wun/wun-* deps to unlink in " deps-path)
+          (do (spit deps-path new)
+              (ok "rewrote deps.edn -> :git/url tag " (c :bold tag))
+              (info "review the result; you may want to add :git/sha as well")))))))
+
+(defn- cmd-unlink [_args]
+  (let [cwd      (str (fs/canonicalize "."))
+        checkout (walk-up-for-marker cwd)
+        app      (when-not checkout (find-app-root cwd))]
+    (cond
+      app      (cmd-unlink-app app)
+      checkout (do (delete-active!)
+                   (ok "removed active.edn  "
+                       (c :dim "(symlink left intact; reinstall to remove it)")))
+      :else    (do (err "run `wun unlink` inside a wun-app dir or wun checkout")
+                   (System/exit 2)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Generators
@@ -705,20 +1030,38 @@
     (println "   no hyphens, dots, or underscores in the name)")
     (System/exit 2)))
 
-(defn- cmd-new-app [[name & _]]
-  (bail-if-bad-name! name "app")
-  (let [dst    (copy-template! "app" name)
-        pascal (pascalize name)]
-    (rewrite-tree! (str dst) name pascal)
-    (println)
-    (println "  next steps:")
-    (println (str "    cd " name))
-    (println "    npm install                  # shadow-cljs needs node deps")
-    (println "    wun dev                      # server + cljs watch together")
-    (println "    open http://localhost:8081")
-    (println)
-    (println "  the template assumes wun is a sibling clone -- see the")
-    (println (str "  README in " (str dst) " to switch to remote refs."))))
+(defn- cmd-new-app [args]
+  (let [link?   (some #{"--link"} args)
+        positional (remove #{"--link"} args)
+        name    (first positional)]
+    (bail-if-bad-name! name "app")
+    (let [dst    (copy-template! "app" name)
+          pascal (pascalize name)]
+      (rewrite-tree! (str dst) name pascal)
+      (when link?
+        (println)
+        (if (active-wun-root)
+          (cmd-link-app (str dst))
+          (warn "--link requested but no active editable Wun is registered;"
+                " run `wun link` inside a wun checkout first.")))
+      (println)
+      (println "  next steps:")
+      (println (str "    cd " name))
+      (println "    npm install                  # shadow-cljs needs node deps")
+      (println "    wun dev                      # server + cljs watch together")
+      (println "    open http://localhost:8081")
+      (println)
+      (cond
+        link?
+        (println (str "  deps.edn linked to " (active-wun-root) "."))
+
+        (active-wun-root)
+        (do (println "  to dogfood the active wun checkout, run:")
+            (println (str "    cd " name " && wun link")))
+
+        :else
+        (do (println "  the template assumes wun is a sibling clone -- see the")
+            (println (str "  README in " (str dst) " to switch to remote refs.")))))))
 
 (defn- cmd-new-pack [[name & _]]
   (bail-if-bad-name! name "pack")
@@ -936,14 +1279,17 @@
     "  wun add component <ns>/<Name>    multi-platform component scaffold"
     "  wun add screen    <ns>/<name>    new screen .cljc"
     "  wun add intent    <ns>/<name>    new intent .cljc"
-    "  wun new app  <name>              standalone app scaffold (server + web + ios + android)"
+    "  wun new app  <name> [--link]     standalone app scaffold (server + web + ios + android)"
     "  wun new pack <name>              user-component pack scaffold"
+    "  wun link                         register cwd's wun checkout (or link this app to it)"
+    "  wun unlink                       unregister checkout (or restore app's deps.edn)"
     "  wun release  <version>           tag + push (e.g. v0.1.0)"
     "  wun upgrade                      pull latest wun + surface BREAKING changes"
     "  wun migrations <list|apply ...>  list / apply codemod scripts in migrations/"
     "  wun help                         this message"
     ""
-    (str "  Set " (c :dim "WUN_NO_AUTO_UPGRADE=1") " to suppress the auto-check.")]))
+    (str "  Set " (c :dim "WUN_NO_AUTO_UPGRADE=1") " to suppress the auto-check.")
+    (str "  Set " (c :dim "WUN_HOME=<path>") " to override the active editable Wun.")]))
 
 (defn- cmd-help [_args] (println usage))
 
@@ -953,7 +1299,8 @@
 (def ^:private skip-auto-check
   ;; Commands where prompting would be wrong (the user is already
   ;; addressing the upgrade or just asking for help).
-  #{"upgrade" "help" "doctor" "status" "release" "migrations" nil})
+  #{"upgrade" "help" "doctor" "status" "release" "migrations"
+    "link" "unlink" nil})
 
 (defn- maybe-auto-check!
   "Before dispatching, check whether the user should upgrade and (in
@@ -967,7 +1314,7 @@
   (when-not (or (skip-auto-check cmd)
                 (System/getenv "WUN_NO_AUTO_UPGRADE"))
     (let [root (find-repo-root)]
-      (when (and root (not (dev-mode? root)))
+      (when (and root (not (framework-dev-checkout? root)))
         (let [state (get-upgrade-state root)
               recently-declined?
               (and (:declined state)
@@ -998,6 +1345,8 @@
     "dev"         (cmd-dev        args)
     "run"         (cmd-run        args)
     "new"         (cmd-new        args)
+    "link"        (cmd-link       args)
+    "unlink"      (cmd-unlink     args)
     "release"     (cmd-release    args)
     "upgrade"     (cmd-upgrade    args)
     "migrations"  (cmd-migrations args)

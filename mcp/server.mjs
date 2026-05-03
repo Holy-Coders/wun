@@ -31,11 +31,43 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 
 const __filename = fileURLToPath(import.meta.url);
-const REPO_ROOT  = resolve(dirname(__filename), "..");
+const SCRIPT_ROOT = resolve(dirname(__filename), "..");
+
+// Resolve the active editable Wun. Order:
+//   1. WUN_HOME env var (explicit override)
+//   2. ~/.config/wun/active.edn :root  (written by `wun link` and install.sh)
+//   3. The script's own checkout (bootstrap fallback when MCP is run
+//      out of an unlinked tree)
+//
+// EDN parsing in Node would be overkill -- the file is single-line per
+// key, and we only need the :root path. A targeted regex is robust
+// enough and avoids pulling in an EDN dep just for this resolver.
+function resolveActiveWunRoot() {
+  const fromEnv = process.env.WUN_HOME;
+  if (fromEnv && existsSync(join(fromEnv, "wun-server", "deps.edn"))) {
+    return fromEnv;
+  }
+  const cfgDir  = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  const cfgFile = join(cfgDir, "wun", "active.edn");
+  if (existsSync(cfgFile)) {
+    try {
+      const text = readFileSync(cfgFile, "utf8");
+      const m    = text.match(/:root\s+"([^"]+)"/);
+      if (m && existsSync(join(m[1], "wun-server", "deps.edn"))) {
+        return m[1];
+      }
+    } catch { /* fall through */ }
+  }
+  return SCRIPT_ROOT;
+}
+
+const REPO_ROOT  = resolveActiveWunRoot();
 const WUN_BIN    = resolve(REPO_ROOT, "bin/wun");
 
 // ---------------------------------------------------------------------------
@@ -225,4 +257,4 @@ server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-process.stderr.write("[wun-mcp] connected over stdio\n");
+process.stderr.write(`[wun-mcp] connected over stdio  (REPO_ROOT=${REPO_ROOT})\n`);

@@ -123,6 +123,23 @@ install_symlink() {
   esac
 }
 
+register_active_wun() {
+  # Persist the canonical path of this checkout so the CLI, the MCP
+  # server, and `wun new app --link` all agree on which Wun is the
+  # editable one. Mirrors `wun link` (the CLI command) so a fresh
+  # install is implicitly linked.
+  local cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wun"
+  local cfg_file="$cfg_dir/active.edn"
+  mkdir -p "$cfg_dir"
+  cat > "$cfg_file" <<EOF
+{:root        "$WUN_ROOT"
+ :linked-at   $(date +%s)
+ :linked-from "$WUN_ROOT"
+ :version     1}
+EOF
+  ok "registered active editable wun: $WUN_ROOT"
+}
+
 # ---------------------------------------------------------------------------
 
 main() {
@@ -130,6 +147,7 @@ main() {
   ensure_repo
   ensure_bb
   install_symlink
+  register_active_wun
   echo
   ok "done. Try: $(color '1' 'wun doctor')"
 }
