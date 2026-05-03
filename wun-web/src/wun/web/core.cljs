@@ -19,6 +19,7 @@
             [wun.web.intent-bus :as bus]
             [wun.web.persist    :as persist]
             [wun.web.renderers  :as renderers]
+            [wun.web.styles     :as styles]
             ;; populate registries:
             wun.foundation.components
             wun.foundation.theme
@@ -78,7 +79,7 @@
                    ;; Cold-start placeholder while we wait for the SSE
                    ;; stream to deliver the first frame.
                    [:div.wun-bootstrapping {} ""])]
-      (r/render! el (renderers/render-node tree)))))
+      (r/render el (renderers/render-node tree)))))
 
 ;; The bus' display-tree atom drives all renders. We add a single
 ;; watcher; recompute! pushes a new value, the watcher fires, and
@@ -212,6 +213,10 @@
 ;; Entry points
 
 (defn ^:export init []
+  ;; Inject the foundation stylesheet first so the very first render
+  ;; isn't unstyled. No-op if the app shipped its own
+  ;; `<style id="wun-foundation-css">…</style>` in the document head.
+  (styles/inject!)
   (mount!)
   ;; Hydrate from localStorage BEFORE opening the stream so the user
   ;; sees last-known UI immediately on reload (Hotwire-snapshot-style)
