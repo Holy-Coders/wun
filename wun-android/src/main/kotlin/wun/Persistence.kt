@@ -17,6 +17,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.prefs.Preferences
 
 @Serializable
@@ -59,6 +64,27 @@ object Persistence {
     fun clear(path: String = "/") {
         prefs.remove(key(path))
         prefs.flush()
+    }
+
+    /**
+     * Pull a server-issued session token out of the persisted state for
+     * `path`, if any. Mirrors `wun.web.core/persisted-session-token` and
+     * the Swift `Persistence.sessionToken`. The host wires this into
+     * `SSEClient`'s `headers` map as `X-Wun-Session: <t>` so the server's
+     * init-state-fn rehydrates the user's slice during the SSE handshake.
+     *
+     * Returns null when no snapshot exists, the snapshot is stale, or
+     * the snapshot has no `:session.token`. Stale tokens are a no-op
+     * server-side (the sessions table lookup returns null and the
+     * init-state-fn skips the merge), so don't bother validating
+     * client-side.
+     */
+    fun sessionToken(path: String = "/"): String? {
+        val snap = load(path) ?: return null
+        val state = snap.state as? JsonObject ?: return null
+        val session = state["session"] as? JsonObject ?: return null
+        val token = (session["token"] as? JsonPrimitive)?.contentOrNull
+        return token?.takeIf { it.isNotEmpty() }
     }
 
     private fun key(path: String): String = "snapshot:$path"

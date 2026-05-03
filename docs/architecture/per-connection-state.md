@@ -182,10 +182,16 @@ saved slice, and folds both into the freshly-created conn-state:
        session (assoc :session session)))))
 ```
 
-The web client (`wun.web.core/caps-url`) reads the token out of the
-existing localStorage hot-cache before each SSE connect; logout
-dissocs `:session` from confirmed-state, the next save! drops it
-from localStorage, and the next reconnect skips resume.
+- Web client: `wun.web.core/caps-url` reads the token out of the
+  existing localStorage hot-cache before each SSE connect; logout
+  dissocs `:session` from confirmed-state, the next save! drops it
+  from localStorage, and the next reconnect skips resume.
+- iOS:     `Persistence.sessionToken(path:)` (UserDefaults). The
+  WunSmoke target is the reference caller; real apps wire the
+  return value into `SSEClient`'s `headers` map under
+  `X-Wun-Session`.
+- Android: `Persistence.sessionToken(path)` (java.util.prefs) -- same
+  shape; `wun.demo.App` and `wun.Smoke` both use it.
 
 A stale token on the client is a no-op: the server's
 `load-session-by-token` returns nil for any token not present in
@@ -228,26 +234,32 @@ the `sessions` table, so the cond-> gate skips the merge.
    tab updates within ~one poll-tick
 ```
 
+## Slice eviction
+
+`state/remove-connection!` drops the conn-state slice whenever the
+last SSE channel pinned to a conn-id goes away (a single conn-id
+can have multiple channels during reconnect overlaps). `evict-closed!`
+runs on every `gc-tick` and sweeps any orphan slices whose conn-id
+has no live channel left -- defence-in-depth against a remove-
+connection! call that gets skipped by an exception.
+
+Anonymous slices die for good when their connection drops -- there's
+no resume path without a session token, and the conn-id itself is
+fresh on every connect, so keeping the orphan slice would just leak
+memory.
+
+Slices for logged-in users die the same way, but the durable layer
+rebuilds them on the next handshake from `wun_conn_state` via the
+init-state-fn. Net effect: live memory is bounded by **concurrent
+active connections**, not lifetime user count.
+
 ## What's still missing
 
-- **Slice eviction policy.** Closed connections leave their slices
-  behind. The `gc-tick!` in `http.clj` prunes the SSE channel map
-  but not `conn-states`. Real-world apps want a TTL eviction here;
-  the natural hook is to dissoc-from `conn-states` whenever
-  `state/remove-connection!` runs and there's no other live SSE
-  with the same user-id. Not wired up because the durable layer
-  rebuilds the slice on resume anyway, so memory growth is bounded
-  by concurrent active users + their offline tail.
 - **Datomic cross-instance bus.** Datomic Local is in-process by
   design. For a multi-instance Datomic deployment you'd switch to
   Datomic Cloud (or Pro) and use its own change feed, OR keep the
   Postgres LISTEN/NOTIFY pattern by adding a separate Postgres
   side-channel just for notifications.
-- **Native client session resume.** iOS/Android can already set
-  `X-Wun-Session` on connect, but the SwiftUI / Compose clients
-  don't yet read the token from their local hot-cache and attach
-  it. Same shape as the web client change in `wun.web.core/caps-url`,
-  one site per platform.
 
 ## Migrating an existing app
 

@@ -32,12 +32,23 @@ fun main(args: Array<String>) {
         }
     )
 
+    // Build the request headers. Native clients can set arbitrary
+    // headers (unlike EventSource on the web), so caps + format + an
+    // optional session-token resume token all ride here. The token is
+    // pulled from Preferences; if a previous run logged in, the server
+    // rehydrates the user's slice during the SSE handshake.
+    val sseHeaders = buildMap<String, String> {
+        put("X-Wun-Capabilities", capabilities)
+        put("X-Wun-Format",       "json")
+        Persistence.sessionToken("/")?.let {
+            put("X-Wun-Session", it)
+            println("[smoke] resuming with persisted session token (prefix ${it.take(8)})")
+        }
+    }
+
     val client = SSEClient(
         url = sseUrl,
-        headers = mapOf(
-            "X-Wun-Capabilities" to capabilities,
-            "X-Wun-Format"       to "json",
-        ),
+        headers = sseHeaders,
         onConnected  = { println("[smoke] connected to $sseUrl (caps via header)") },
         onDisconnect = { e ->
             println("[smoke] disconnected: ${e?.message ?: "(graceful)"}")

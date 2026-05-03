@@ -132,8 +132,26 @@
                                       :conn-id      conn-id})
    (swap! conn-states assoc conn-id (compute-init-state conn-id ctx))))
 
-(defn remove-connection! [event-ch]
-  (swap! connections dissoc event-ch))
+(defn- conn-id-has-other-channel? [m conn-id without-ch]
+  (some (fn [[ch v]]
+          (and (not= ch without-ch)
+               (= conn-id (:conn-id v))))
+        m))
+
+(defn remove-connection!
+  "Drop the SSE channel `event-ch` and -- when this was the last
+   channel pinned to its conn-id -- the corresponding state slice.
+   Anonymous slices die for good (there's no way to resume without
+   a session token). Slices for logged-in users are rebuilt on the
+   next handshake from `wun_conn_state` via the init-state-fn, so
+   eviction is safe even when the user is mid-session."
+  [event-ch]
+  (let [conns @connections
+        cid   (get-in conns [event-ch :conn-id])]
+    (swap! connections dissoc event-ch)
+    (when (and cid
+               (not (conn-id-has-other-channel? @connections cid event-ch)))
+      (swap! conn-states dissoc cid))))
 
 (defn prior-tree [event-ch]
   (get-in @connections [event-ch :prior]))
@@ -237,13 +255,25 @@
   (async-impl/closed? event-ch))
 
 (defn evict-closed!
-  "Remove any connections whose channels have been closed. Returns
-   the number evicted."
+  "Remove any connections whose channels have been closed and any
+   conn-states slices whose conn-id no longer has a live channel.
+   Returns the number of connections evicted (slices follow them
+   1:1, modulo multi-channel conn-ids)."
   []
-  (let [old @connections
-        live (into {} (remove (fn [[ch _]] (closed? ch)) old))]
+  (let [old  @connections
+        live (into {} (remove (fn [[ch _]] (closed? ch)) old))
+        live-cids (into #{} (map (comp :conn-id val) live))]
     (when (not= (count old) (count live))
-      (reset! connections live))
+      (reset! connections live)
+      ;; Drop slices whose conn-id no longer has a channel. The
+      ;; durable layer rebuilds them on the next handshake.
+      (swap! conn-states
+             (fn [m]
+               (reduce-kv (fn [acc cid s]
+                            (if (contains? live-cids cid)
+                              (assoc acc cid s)
+                              acc))
+                          {} m))))
     (- (count old) (count live))))
 
 (defn connection-count [] (count @connections))
