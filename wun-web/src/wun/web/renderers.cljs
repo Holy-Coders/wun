@@ -52,7 +52,10 @@
     (boolean? node) (str node)
     (vector? node)
     (let [tag (first node)]
-      (if (keyword? tag)
+      (cond
+        ;; Wun components are namespaced keywords (`:wun/Stack`,
+        ;; `:myapp/Card`, …). Dispatch through the registry.
+        (and (keyword? tag) (namespace tag))
         (let [[props children] (props+children node)
               kids             (render-children children)
               f                (lookup tag)]
@@ -64,7 +67,20 @@
           (if f
             (f props kids)
             (into [:div.wun-unknown {} (str "[unknown component " tag "]")] kids)))
-        ;; Plain seq -> flatten into a fragment-shaped vector. Replicant
-        ;; accepts seqs of children directly, so we just splice.
+
+        ;; Un-namespaced keywords (`:div`, `:span`, `:div.wun-foo`)
+        ;; are plain HTML — recurse on children but pass the tag
+        ;; through verbatim. Lets screens / cold-start placeholders
+        ;; mix raw HTML hiccup into the tree without forcing every
+        ;; tag through the component registry.
+        (keyword? tag)
+        (let [[props children] (props+children node)
+              kids             (render-children children)]
+          (into [tag props] kids))
+
+        :else
+        ;; Plain seq with a non-keyword head -> flatten into a
+        ;; fragment-shaped vector. Replicant accepts seqs of children
+        ;; directly, so we just splice.
         (vec (render-children node))))
     :else (str node)))

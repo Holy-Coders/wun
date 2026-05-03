@@ -7,7 +7,8 @@
    move from Reagent's `:on-click` directly-attached-fn to Replicant's
    `:on {:click <fn>}` map -- Replicant's documented idiom and the
    only one its renderer recognises."
-  (:require [wun.forms          :as forms]
+  (:require [wun.components     :as components]
+            [wun.forms          :as forms]
             [wun.web.renderers  :as r]
             [wun.web.intent-bus :as bus]))
 
@@ -111,6 +112,65 @@
     ;; Margin + color live in wun.web.styles via the .wun-heading rule.
     (let [tag (case level 1 :h1 2 :h2 3 :h3 4 :h4 :h2)]
       (into [tag {:class "wun-heading"}] children))))
+
+;; :wun/Card -- titled container. Optional :title renders as a header
+;; bar above the body. Visual styling lives in wun.web.styles via
+;; `.wun-card` / `.wun-card__title` / `.wun-card__body`.
+
+(r/register! :wun/Card
+  (fn [{:keys [title]} children]
+    (cond-> [:section.wun-card]
+      title (conj [:header.wun-card__title title])
+      true  (conj (into [:div.wun-card__body] children)))))
+
+;; :wun/Image -- straightforward img tag. `:size` becomes width+height.
+
+(r/register! :wun/Image
+  (fn [{:keys [src alt size]} _children]
+    [:img.wun-image
+     (cond-> {:src (or src "")
+              :alt (or alt "")}
+       size (assoc :width size :height size))]))
+
+;; :wun/Avatar -- circular avatar with image src OR initials fallback.
+
+(r/register! :wun/Avatar
+  (fn [{:keys [src initials size]} _children]
+    (let [px (or size 32)]
+      (if src
+        [:span.wun-avatar
+         {:style {:width  (str px "px")
+                  :height (str px "px")
+                  :background-image (str "url('" src "')")}}]
+        [:span.wun-avatar.wun-avatar--initials
+         {:style {:width  (str px "px")
+                  :height (str px "px")
+                  :line-height (str px "px")
+                  :font-size   (str (max 10 (int (* px 0.4))) "px")}}
+         (or initials "?")]))))
+
+;; :wun/List -- vertical list container; structurally a ul, styled
+;; flat (no bullets) so individual items style as the parent screen
+;; chooses.
+
+(r/register! :wun/List
+  (fn [_props children]
+    (into [:ul.wun-list] children)))
+
+;; :wun/Spacer -- inert vertical gap. `:size` is in px; defaults to 8.
+
+(r/register! :wun/Spacer
+  (fn [{:keys [size]} _children]
+    [:div.wun-spacer {:style {:height (str (or size 8) "px")}}]))
+
+;; :wun/ScrollView -- bounded scrolling container. `:direction` chooses
+;; `vertical` (default) vs `horizontal`.
+
+(r/register! :wun/ScrollView
+  (fn [{:keys [direction]} children]
+    (into [:div.wun-scroll
+           {:data-direction (some-> direction name)}]
+          children)))
 
 ;; :wun/Input -- text input bound through an intent. Two-way data flow
 ;; uses optimistic morphs: the on-input handler dispatches a value-change
@@ -253,3 +313,29 @@
                   {:max (or (:size u) 0)
                    :value (or (:received u) 0)
                    :style {:flex 1}}])])))))
+
+;; ---------------------------------------------------------------------------
+;; Strict-mode parity check.
+;;
+;; Capability fallback (a `:wun/WebFrame` placeholder) is the right
+;; design for *user* components a given client doesn't bind. For the
+;; framework's own `:wun/*` vocabulary, missing a renderer is a bug —
+;; the WebFrame fallback only hides it. Crash at load time with the
+;; full list so the gap can't survive into a running app.
+;;
+;; Runs once on ns load, after every renderer above is registered.
+
+(let [missing (->> (components/registered)
+                   (filter #(= "wun" (namespace %)))
+                   (remove r/lookup)
+                   sort
+                   vec)]
+  (when (seq missing)
+    (throw (ex-info
+             (str "wun.web.foundation: framework :wun/* components without "
+                  "a web renderer: " missing
+                  ". Add `(r/register! " (first missing) " ...)` "
+                  "in this ns — the WebFrame capability fallback is for "
+                  "user-namespace components, not the framework's own "
+                  "vocabulary.")
+             {:missing missing}))))
