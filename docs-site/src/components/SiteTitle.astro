@@ -6,19 +6,24 @@
  * splash homepage is `template: splash` and doesn't show the
  * sidebar at all, so without this link there's no visible way to
  * get from the landing page into the documentation.
+ *
+ * `siteTitle` and `siteTitleHref` are passed in by Starlight's
+ * Header — `siteTitle` is the locale-resolved string for the
+ * current page and `siteTitleHref` is already base-prefixed.
+ * (Reading `config.title` directly returns the per-locale map,
+ * which renders as "[object Object]".)
  */
 
-import config from "virtual:starlight/user-config";
 import wunMark from "../assets/wun-mark.svg";
 import { withBase } from "../utils/base.mjs";
 
-const homeHref = withBase("/");
+const { siteTitle, siteTitleHref } = Astro.props;
 const docsHref = withBase("/concepts/sdui/");
 ---
 
-<a href={homeHref} class="wun-site-title" rel="home">
+<a href={siteTitleHref} class="wun-site-title" rel="home">
   <img class="wun-site-title__mark" src={wunMark.src} alt="" width="32" height="32" />
-  <span class="wun-site-title__name" translate="no">{config.title}</span>
+  <span class="wun-site-title__name" translate="no">{siteTitle}</span>
 </a>
 
 <nav class="wun-header-nav" aria-label="Primary">
