@@ -8,6 +8,8 @@
   (:require [wun.server.http :as http]
             ;; Side-effecting requires populate the open registries.
             wun.foundation.components
+            wun.foundation.theme
+            wun.forms.intents
             wun.app.counter
             wun.app.about
             myapp.components)

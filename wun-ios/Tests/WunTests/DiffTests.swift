@@ -9,8 +9,12 @@ final class DiffTests: XCTestCase {
         for (k, v) in pairs { m[k] = v }
         return .object(m)
     }
-    func patch(_ op: PatchOp, path: [Int], value: JSON? = nil) -> Patch {
-        Patch(op: op, path: path, value: value)
+    func patch(_ op: PatchOp, path: [Int], value: JSON? = nil,
+               order: [ChildOrderEntry]? = nil) -> Patch {
+        Patch(op: op, path: path, value: value, order: order)
+    }
+    func entry(key: String, existing: Bool = true, value: JSON? = nil) -> ChildOrderEntry {
+        ChildOrderEntry(key: .string(key), existing: existing, value: value)
     }
 
     // MARK: - replace at root
@@ -92,5 +96,47 @@ final class DiffTests: XCTestCase {
             patch(.replace, path: [0], value: .string("bye")),
         ])
         XCTAssertEqual(after, arr(.string("wun/Stack"), .object([:]), .string("bye")))
+    }
+
+    // MARK: - wire v2: keyed children
+
+    /// Apply a `:children` op at the root that reorders existing keyed children.
+    func testChildrenOpReordersExisting() {
+        let a = arr(.string("wun/Text"), obj(("key", .string("a"))), .string("A"))
+        let b = arr(.string("wun/Text"), obj(("key", .string("b"))), .string("B"))
+        let c = arr(.string("wun/Text"), obj(("key", .string("c"))), .string("C"))
+        let before = arr(.string("wun/Stack"), .object([:]), a, b, c)
+        let after = Diff.apply(before,
+            patch(.children, path: [],
+                  order: [entry(key: "c"), entry(key: "a"), entry(key: "b")]))
+        XCTAssertEqual(after, arr(.string("wun/Stack"), .object([:]), c, a, b))
+    }
+
+    /// `:children` carrying a fresh subtree for a key not present in old.
+    func testChildrenOpInsertsInline() {
+        let a = arr(.string("wun/Text"), obj(("key", .string("a"))), .string("A"))
+        let bNew = arr(.string("wun/Text"), obj(("key", .string("b"))), .string("B!"))
+        let before = arr(.string("wun/Stack"), .object([:]), a)
+        let after = Diff.apply(before,
+            patch(.children, path: [],
+                  order: [entry(key: "a"),
+                          entry(key: "b", existing: false, value: bNew)]))
+        XCTAssertEqual(after, arr(.string("wun/Stack"), .object([:]), a, bNew))
+    }
+
+    /// Ordering followed by a recursive prop change at the new index.
+    func testChildrenOpThenRecursiveReplace() {
+        let a1 = arr(.string("wun/Text"), obj(("key", .string("a"))), .string("A1"))
+        let a2 = arr(.string("wun/Text"), obj(("key", .string("a"))), .string("A2"))
+        let b  = arr(.string("wun/Text"), obj(("key", .string("b"))), .string("B"))
+        let before = arr(.string("wun/Stack"), .object([:]), a1, b)
+        // After :children at root, the order is [b, a1]. Then path [1, 0]
+        // replaces the text leaf of the now-second child (a1) with "A2".
+        let after = Diff.apply(before, [
+            patch(.children, path: [],
+                  order: [entry(key: "b"), entry(key: "a")]),
+            patch(.replace, path: [1, 0], value: .string("A2")),
+        ])
+        XCTAssertEqual(after, arr(.string("wun/Stack"), .object([:]), b, a2))
     }
 }

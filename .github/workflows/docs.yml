@@ -46,11 +46,18 @@ jobs:
         run: npm ci || npm install
 
       - name: Install Playwright Chromium (for build-time mermaid SVGs)
+        id:   chromium
         run: npx playwright install --with-deps chromium
+        continue-on-error: true
 
       - name: Build
         env:
-          GH_PAGES: "1"
+          GH_PAGES:    "1"
+          # Render mermaid SVGs only when the Chromium install above
+          # succeeded. astro.config.mjs falls back to plain code blocks
+          # when WUN_MERMAID is unset so a broken Chromium download
+          # doesn't take the whole site build down.
+          WUN_MERMAID: ${{ steps.chromium.outcome == 'success' && '1' || '' }}
         run: npm run build
 
       - name: Upload Pages artifact

@@ -14,3 +14,11 @@ tmp/
 
 # node_modules anywhere in the tree (mcp/, wun-web/, docs-site/).
 node_modules/
+
+# Clojure CLI classpath cache.
+.cpcache/
+
+# shadow-cljs and Replicant build output.
+wun-web/public/js/
+wun-web/.shadow-cljs/
+wun-web/out/

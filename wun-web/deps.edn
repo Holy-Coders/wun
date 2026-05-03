@@ -1,12 +1,17 @@
-;; Phase 1.D-shadow-cljs: shadow-cljs reads its classpath from deps.edn
-;; via `:deps true` in shadow-cljs.edn, so this file is the source of
-;; truth for cljs library deps. Build/watch invocation lives in
-;; package.json scripts (shadow-cljs is npm-launchable).
+;; wun-web: shadow-cljs reads its classpath from deps.edn via
+;; `:deps true` in shadow-cljs.edn. Build/watch invocation lives in
+;; package.json scripts.
+;;
+;; Phase 3 swap: Reagent (and React, react-dom) replaced with Replicant
+;; -- a pure-Clojure VDOM with zero runtime dependencies. The hiccup
+;; shape Wun's renderers produce is unchanged; what changed is the
+;; render path (Replicant diffs against an internal vdom and emits
+;; minimal DOM ops directly, no React reconciler in the middle).
 
 {:paths ["src"]
  :deps  {org.clojure/clojure        {:mvn/version "1.12.0"}
          org.clojure/clojurescript  {:mvn/version "1.11.132"}
          com.cognitect/transit-cljs {:mvn/version "0.8.280"}
-         reagent/reagent            {:mvn/version "1.2.0"}
+         no.cjohansen/replicant     {:mvn/version "2025.12.1"}
          thheller/shadow-cljs       {:mvn/version "2.28.20"}
          wun/shared                 {:local/root "../wun-shared"}}}

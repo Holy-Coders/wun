@@ -1,16 +1,17 @@
 (ns wun.web.renderers
   "Open web renderer registry. Each component keyword maps to a fn
-   `(props children-as-reagent-hiccup) -> reagent-hiccup`. Framework
+   `(props children-as-replicant-hiccup) -> replicant-hiccup`. Framework
    code and user code register through `register!` identically; the
    registry doesn't distinguish the two.
 
    `render-node` walks an incoming Wun Hiccup tree (which uses
    namespaced component keywords like :wun/Stack) and produces a
-   reagent Hiccup tree (which uses plain HTML keywords like :div).
-   Reagent's React reconciler then handles the actual DOM updates -- so
-   moving from the previous hand-rolled vanilla-DOM applicator to
-   reagent doesn't change the registry contract, only what the
-   registered fn returns.")
+   Replicant Hiccup tree (which uses plain HTML keywords like :div).
+   Replicant's renderer then handles the actual DOM updates -- moving
+   from React/Reagent to Replicant doesn't change the registry
+   contract, only the rendering substrate underneath. No more Virtual
+   DOM Through React; Replicant computes a minimal patch list against
+   the prior render and emits direct DOM operations.")
 
 (defonce registry (atom {}))
 
@@ -37,10 +38,12 @@
   (mapv render-node children))
 
 (defn render-node
-  "Wun Hiccup -> reagent Hiccup. Strings, numbers, and booleans pass
-   through as text. Vectors with a keyword head dispatch through the
-   registry; unknown components fall back to a visible placeholder
-   (phase-2 swaps that for a Hotwire WebFrame fallback)."
+  "Wun Hiccup -> Replicant Hiccup. Strings and numbers pass through as
+   text. Vectors with a keyword head dispatch through the registry;
+   unknown components fall back to a visible placeholder. Lists become
+   inline child sequences (Replicant flattens nested seqs natively, so
+   no fragment wrapper needed -- unlike React/Reagent which required
+   the `[:<>]` fragment tag)."
   [node]
   (cond
     (nil? node)     nil
@@ -61,6 +64,7 @@
           (if f
             (f props kids)
             (into [:div.wun-unknown {} (str "[unknown component " tag "]")] kids)))
-        ;; Plain seq -> reagent fragment.
-        (into [:<>] (render-children node))))
+        ;; Plain seq -> flatten into a fragment-shaped vector. Replicant
+        ;; accepts seqs of children directly, so we just splice.
+        (vec (render-children node))))
     :else (str node)))

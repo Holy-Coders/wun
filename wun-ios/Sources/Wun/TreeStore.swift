@@ -42,6 +42,22 @@ public final class TreeStore: ObservableObject {
     @Published public private(set) var title: String?
     @Published public private(set) var meta: JSON?
 
+    /// CSRF token bound to this connection's session, issued on the
+    /// first envelope. Echoed on /intent POSTs so the server's CSRF
+    /// interceptor accepts them; the IntentDispatcher reads it via
+    /// the `csrfProvider` closure callers wire at construction time.
+    @Published public private(set) var csrfToken: String?
+
+    /// Effective theme map for this connection, mirrored from the
+    /// server's envelopes. Native renderers resolve token keywords
+    /// (e.g. `wun.color/primary`) against this map.
+    @Published public private(set) var theme: [String: JSON] = [:]
+
+    /// Wire envelope version negotiated at handshake. Surfaces here
+    /// so renderers / hosts can degrade rendering when a v3 server
+    /// ships features they don't know about.
+    @Published public private(set) var envelopeVersion: Int = 2
+
     public init(initial: JSON = .null) {
         self.tree = WunNode.from(initial)
     }
@@ -73,6 +89,15 @@ public final class TreeStore: ObservableObject {
                case .string(let t) = dict["title"] ?? .null {
                 title = t
             }
+        }
+        if let t = envelope.csrfToken {
+            csrfToken = t
+        }
+        if let th = envelope.theme, let dict = th.objectValue {
+            theme = dict
+        }
+        if let v = envelope.envelopeVersion {
+            envelopeVersion = v
         }
         lastResolvedIntent = envelope.resolvesIntent
     }

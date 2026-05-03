@@ -19,6 +19,9 @@ class TreeMirror(initial: JsonElement = JsonNull) {
     @Volatile private var _presentations: List<String> = emptyList()
     @Volatile private var _meta: JsonElement? = null
     @Volatile private var _title: String? = null
+    @Volatile private var _csrfToken: String? = null
+    @Volatile private var _theme: JsonElement? = null
+    @Volatile private var _envelopeVersion: Int = 2
 
     val tree:  JsonElement get() = _tree
     val state: JsonElement get() = _state
@@ -29,6 +32,9 @@ class TreeMirror(initial: JsonElement = JsonNull) {
     val topPresentation: String get() = _presentations.lastOrNull() ?: "push"
     val meta: JsonElement? get() = _meta
     val title: String? get() = _title
+    val csrfToken: String? get() = _csrfToken
+    val theme: JsonElement? get() = _theme
+    val envelopeVersion: Int get() = _envelopeVersion
 
     fun apply(envelope: Envelope) {
         synchronized(lock) {
@@ -48,6 +54,9 @@ class TreeMirror(initial: JsonElement = JsonNull) {
                     }
                 }
             }
+            envelope.csrfToken?.let       { _csrfToken = it }
+            envelope.theme?.let           { _theme = it }
+            envelope.envelopeVersion?.let { _envelopeVersion = it }
             _lastResolvedIntent = envelope.resolvesIntent
         }
     }

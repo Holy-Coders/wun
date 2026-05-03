@@ -28,25 +28,36 @@ class IntentDispatcher(
      * this connection's screen-stack on the server.
      */
     private val connIdProvider: () -> String? = { null },
+    /**
+     * Returns the current CSRF token issued in the connect envelope,
+     * or null if the server isn't enforcing CSRF
+     * (`WUN_CSRF_REQUIRED=false`). The dispatcher echoes it on every
+     * /intent POST as both the `X-Wun-CSRF` header and the body's
+     * `csrf-token` field.
+     */
+    private val csrfProvider:   () -> String? = { null },
 ) {
     private val mediaType = "application/json".toMediaType()
 
     /** Fire `intent` with `params`. Returns the generated intent id. */
     fun dispatch(intent: String, params: Map<String, JsonElement> = emptyMap()): String {
-        val id = UUID.randomUUID().toString()
+        val id   = UUID.randomUUID().toString()
+        val csrf = csrfProvider()
         val body = buildJsonObject {
             put("intent", JsonPrimitive(intent))
             put("params", JsonObject(params))
             put("id",     JsonPrimitive(id))
             connIdProvider()?.let { put("conn-id", JsonPrimitive(it)) }
+            csrf?.let { put("csrf-token", JsonPrimitive(it)) }
         }.toString().toRequestBody(mediaType)
 
-        val req = Request.Builder()
+        val builder = Request.Builder()
             .url("$baseUrl/intent")
             .post(body)
             .header("Content-Type", "application/json")
             .header("Accept",       "application/json")
-            .build()
+        if (csrf != null) builder.header("X-Wun-CSRF", csrf)
+        val req = builder.build()
 
         client.newCall(req).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

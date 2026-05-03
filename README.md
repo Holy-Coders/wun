@@ -96,47 +96,68 @@ any time with `git subtree split`.
 | `templates/`           | -              | starter pack scaffold for `wun new` |
 | `cli/`, `bin/`         | babashka       | the `wun` CLI                       |
 
-## Status: phase 0 + slice 1.A landed
+## Status: production-readiness pass landed
 
-Phase 0 wired the smallest end-to-end loop: server is the source of
-truth, emits patch envelopes over SSE, web client renders, intents POST
-back. Slice 1.A promotes the macros and registries to first-class
-shared code:
+The production-readiness pass on
+`claude/production-readiness-planning-1Irov` brought Wun from
+"end-to-end spike" to "shippable at the LiveView/Hotwire level."
+Full plan and per-phase verification gates in
+[`docs/production-readiness.md`](docs/production-readiness.md).
 
-- `wun-shared/` carries `defcomponent` / `defscreen` / `definent` plus
-  the open registries each one feeds.
-- The foundational `:wun/Stack` / `:wun/Text` / `:wun/Button`
-  vocabulary is registered via `defcomponent` -- the same API user
-  code uses. There is no privileged path between framework and user.
-- The counter app (`:counter/main` screen + `:counter/inc/dec/reset`
-  intents) is ordinary user-namespace code in `wun.app.counter`,
-  registered through the same `defscreen` / `definent` calls.
-- The server's render pipeline reads from the screen registry; the
-  web client's renderer dispatches via an open per-platform renderer
-  registry (`wun.web.renderers`), with `:wun/*` DOM bindings split out
-  to `wun.web.foundation`.
+What that pass added, briefly:
 
-Slice 1.B then promotes the wire from "full-tree replace each frame"
-to real structural diffing. Server keeps a per-connection memoized
-prior tree; on each broadcast it diffs the current tree against the
-prior and emits only `:replace` / `:insert` / `:remove` patches at
-the smallest path that changed. Frame size for a single counter
-increment dropped from ~673 B (full tree) to ~169 B (one deep
-`:replace`).
+- **Hardened transport**: heartbeat envelopes, bounded-buffer
+  backpressure with snapshot resync, token-bucket rate limiting,
+  HMAC-SHA256 CSRF, session-token rotation + revocation, structured
+  vendor-neutral telemetry (`wun.server.telemetry`).
+- **Wire envelope v2**: key-aware children diffing
+  (`:children` op replaces siblings reorders without re-rendering
+  every following position), version negotiated at handshake; v1
+  fallback for older native clients.
+- **Web rewrite on Replicant**: zero React, zero JS deps. Same
+  hiccup tree the renderers always produced; the substrate
+  underneath is now a pure-Clojure VDOM with direct DOM emission.
+- **Forms + uploads**: `:wun/Form` / `:wun/Field` with
+  `:wun.forms/change` / `/submit` / `/touch` / `/reset` framework
+  intents, Malli validation merge, a streaming `/upload` endpoint
+  with progress patches piggybacking the SSE stream.
+- **Theme primitives that cascade server → all clients**:
+  namespaced design tokens (`:wun.color/primary`, `:wun.spacing/md`,
+  ...) resolved server-side before substitution; the resolved theme
+  rides in every envelope so the web client mirrors it as CSS
+  custom properties; iOS / Android decode + mirror the same shape.
+- **PubSub + Presence**: `wun.server.pubsub` (pluggable `Bus`
+  protocol; in-process default), `wun.server.presence` per-topic
+  rolls with auto-cleanup, `wun.server.broadcast` convenience layer
+  fusing pubsub + per-conn morph + re-broadcast.
+- **Native parity**: iOS + Android both decode wire v2, echo CSRF,
+  mirror theme, and expose host extension points
+  (`Wun.hostNavigator` for HotwireNative on iOS, `Wun.openUrl` for
+  custom URL handlers on Android).
+- **DX + ops polish**: `wun.errors` boundary so a screen render
+  exception ships an error tree instead of dropping the SSE stream;
+  `wun.server.config` for 12-factor env-var resolution;
+  `migrations/lib.bb` AST-based codemods via rewrite-clj; REPL +
+  observability docs.
+- **Property-based tests** (`clojure.test.check`) for the diff
+  round-trip, capability substitution, and theme resolution.
 
-Slice 1.C lights up the brief's marquee thesis: one morph fn defined
-in shared `.cljc` runs on both server (authoritative) and client
-(optimistic prediction). The wire envelope grows a `:state` field;
-the client mirrors confirmed-state, keeps a pending-intents queue,
-and renders display = `(reduce morph confirmed-state pending)`. When
-the server's confirmation arrives tagged with `:resolves-intent`,
-the matching pending entry drops and the display recomputes -- a
-match collapses to no visible change, a mismatch converges the UI to
-the server's authoritative version.
+Test totals: 65 shared, 86 server, 286+ assertions; `wun-android
+gradle compileKotlin` clean. iOS XCTest and full Compose `gradle
+test` are deferred to a workstation that can fetch from Clojars +
+google-maven (this sandbox can't).
 
-What's still phase 1+: default loading/error/skeletons, capability
-negotiation, native clients, WebFrame fallback, devtools, prop-aware
-patch ops, key-aware list reordering.
+### What's still aspirational
+
+- Real `HotwireNative` SwiftPM dependency wired in (Wun ships the
+  extension point + integration recipe; the host app links the
+  package).
+- A real Android-target `WebView` (the Compose Desktop build ships
+  a "Open in browser" fallback; on-device Android needs an
+  `AndroidView { WebView }` host).
+- A hosted Redis / NATS pubsub backend (`Bus` protocol is the
+  swap-in surface; framework only ships the in-process impl).
+- Push-notification provider integration.
 
 ### Run it
 

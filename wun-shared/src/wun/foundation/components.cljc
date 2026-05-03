@@ -165,3 +165,64 @@
    :fallback :web
    :ios      "WunHeading"
    :android  "WunHeading"})
+
+;; --- Phase 3: loading-state primitive --------------------------------------
+
+(defcomponent :wun/Skeleton
+  {:since    1
+   :schema   [:map
+              [:width  {:optional true} :string]
+              [:height {:optional true} :string]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunSkeleton"
+   :android  "WunSkeleton"})
+
+;; --- Phase 4: forms + uploads ----------------------------------------------
+
+(defcomponent :wun/Form
+  {:since    1
+   :schema   [:map
+              [:id       :keyword]
+              [:on-submit {:optional true} :wun/intent-ref]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunForm"
+   :android  "WunForm"})
+
+(defcomponent :wun/Field
+  {:since    1
+   :schema   [:map
+              [:form  :keyword]
+              [:name  :keyword]
+              [:type  {:optional true} :string]
+              [:label {:optional true} :string]
+              [:value {:optional true} :string]
+              [:placeholder {:optional true} :string]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunField"
+   :android  "WunField"})
+
+(defcomponent :wun/FileInput
+  {:since    1
+   :schema   [:map
+              [:form  :keyword]
+              [:field :keyword]
+              [:accept {:optional true} :string]
+              [:multiple {:optional true} :boolean]]
+   :loading  :inherit
+   :fallback :web
+   :ios      "WunFileInput"
+   :android  "WunFileInput"})
+
+;; --- Phase 7: error boundary -----------------------------------------------
+
+(defcomponent :wun/ErrorBoundary
+  {:since    1
+   :schema   [:map
+              [:reason :string]]
+   :loading  :none
+   :fallback :web
+   :ios      "WunErrorBoundary"
+   :android  "WunErrorBoundary"})

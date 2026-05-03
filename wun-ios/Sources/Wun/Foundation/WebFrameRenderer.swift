@@ -30,6 +30,13 @@ public enum WunWebFrame {
         guard let src, let resolved = resolveURL(src) else {
             return AnyView(WunWebFrame.diagnostic(missing: missing))
         }
+        // Defer to the host navigator first (HotwireNative / Turbo /
+        // custom). If the host declines, fall back to the built-in
+        // WKWebView + WunBridge.
+        if let host = Wun.hostNavigator,
+           let view = host.renderWebFrame(url: resolved, missing: missing) {
+            return view
+        }
         return AnyView(WunWebView(url: resolved).frame(minHeight: 200))
     }
 

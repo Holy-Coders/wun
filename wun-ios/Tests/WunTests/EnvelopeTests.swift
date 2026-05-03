@@ -77,4 +77,28 @@ final class EnvelopeTests: XCTestCase {
         let node = WunNode.from(raw)
         XCTAssertEqual(node.toJSON(), raw)
     }
+
+    // MARK: - Wire v2 fields
+
+    func testDecodesEnvelopeVersionCsrfThemeAndResync() throws {
+        let frame = """
+        {
+          "patches": [],
+          "status": "ok",
+          "envelope-version": 2,
+          "csrf-token": "tok-X",
+          "resync?": true,
+          "theme": {"wun.color/primary": "#0a66c2", "wun.spacing/md": 16}
+        }
+        """
+        let env = try Envelope.decode(frame)
+        XCTAssertEqual(env.envelopeVersion, 2)
+        XCTAssertEqual(env.csrfToken, "tok-X")
+        XCTAssertEqual(env.resync, true)
+        guard case let .object(theme) = env.theme else {
+            return XCTFail("expected theme object")
+        }
+        XCTAssertEqual(theme["wun.color/primary"], .string("#0a66c2"))
+        XCTAssertEqual(theme["wun.spacing/md"], .int(16))
+    }
 }
