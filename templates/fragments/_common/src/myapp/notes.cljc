@@ -15,12 +15,21 @@
   {:params [:map [:body [:string {:min 1}]]]
    :morph
    (fn [state {:keys [body]}]
-     #?(:clj
-        (do (notes-store/add-note! body)
-            (assoc state :notes (notes-store/list-notes)))
-        :cljs
-        (update state :notes (fnil conj [])
-                {:body body :id :optimistic :created-at "now"})))})
+     ;; Soft auth gate: when there's no session, the morph is a no-op
+     ;; and the screen surfaces the "log in" CTA below. The render
+     ;; function repeats the check so logged-out users never see the
+     ;; submit button -- this morph guard is the belt to that
+     ;; render-side suspenders for clients that POST directly.
+     (if (nil? (:session state))
+       (assoc state :auth-error "log in to add notes")
+       #?(:clj
+          (do (notes-store/add-note! body)
+              (assoc state
+                     :notes      (notes-store/list-notes)
+                     :auth-error nil))
+          :cljs
+          (update state :notes (fnil conj [])
+                  {:body body :id :optimistic :created-at "now"}))))})
 
 (defscreen :myapp/notes
   {:path "/notes"
@@ -29,21 +38,38 @@
             :description "DB-backed notes demo for myapp."})
    :render
    (fn [state]
-     [:wun/Stack {:gap 16 :padding 24}
-      [:wun/Heading {:level 1} "Notes"]
-      [:wun/Text {:variant :body}
-       "Each row below is a real database row. Add one to see the round-trip."]
-      [:wun/Form {:on-submit {:intent :myapp/add-note
-                              :params {:body :form/body}}}
-       [:wun/Stack {:gap 8}
-        [:wun/TextField {:name "body" :placeholder "what's on your mind?"}]
-        [:wun/Button {:type :submit} "Save"]]]
-      [:wun/Stack {:gap 4}
-       (for [n (:notes state [])]
-         ^{:key (:id n)}
-         [:wun/Stack {:gap 2 :padding 8}
-          [:wun/Text {:variant :body} (:body n)]
-          [:wun/Text {:variant :caption} (str (:created-at n))]])]
-      [:wun/Stack {:direction :row :gap 8}
-       [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/"}}}
-        "← Home"]]])})
+     (let [signed-in? (some? (:session state))]
+       [:wun/Stack {:gap 16 :padding 24}
+        [:wun/Heading {:level 1} "Notes"]
+        [:wun/Text {:variant :body}
+         "Each row below is a real database row. Add one to see the round-trip."]
+
+        ;; Compose form (signed-in users) or log-in CTA (everyone else).
+        (if signed-in?
+          [:wun/Form {:on-submit {:intent :myapp/add-note
+                                  :params {:body :form/body}}}
+           [:wun/Stack {:gap 8}
+            [:wun/TextField {:name "body" :placeholder "what's on your mind?"}]
+            [:wun/Button {:type :submit} "Save"]]]
+          [:wun/Stack {:gap 8 :padding 12}
+           [:wun/Text {:variant :body}
+                      "Log in to add notes."]
+           [:wun/Stack {:direction :row :gap 8}
+            [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/login"}}}
+             "→ Log in"]
+            [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/signup"}}}
+             "→ Sign up"]]])
+
+        (when-let [err (:auth-error state)]
+          [:wun/Text {:variant :body :color :error} (str "Error: " err)])
+
+        [:wun/Stack {:gap 4}
+         (for [n (:notes state [])]
+           ^{:key (:id n)}
+           [:wun/Stack {:gap 2 :padding 8}
+            [:wun/Text {:variant :body} (:body n)]
+            [:wun/Text {:variant :caption} (str (:created-at n))]])]
+
+        [:wun/Stack {:direction :row :gap 8}
+         [:wun/Button {:on-press {:intent :wun/navigate :params {:path "/"}}}
+          "← Home"]]]))})

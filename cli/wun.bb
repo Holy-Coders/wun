@@ -1126,14 +1126,22 @@
     ;; a symlink; today none does.
     (doseq [p (fs/glob src-path "**" {:hidden true :follow-links true})
             :when (fs/regular-file? p)]
-      (let [rel      (str (fs/relativize src-path p))
-            append?  (str/ends-with? rel ".append")
-            dst-rel  (if append? (subs rel 0 (- (count rel) 7)) rel)
-            dst-file (fs/path dst dst-rel)]
+      (let [rel        (str (fs/relativize src-path p))
+            append?    (str/ends-with? rel ".append")
+            overwrite? (str/ends-with? rel ".overwrite")
+            dst-rel    (cond
+                         append?    (subs rel 0 (- (count rel) 7))
+                         overwrite? (subs rel 0 (- (count rel) 10))
+                         :else      rel)
+            dst-file   (fs/path dst dst-rel)]
         (fs/create-dirs (fs/parent dst-file))
         (cond
           append?
           (append-with-sentinel! dst-file (slurp (str p)) id)
+
+          overwrite?
+          (fs/copy (str p) (str dst-file)
+                   {:replace-existing true})
 
           (fs/exists? dst-file)
           (info "skip (exists): " dst-rel)
@@ -1281,13 +1289,26 @@
                                 (str "Datomic Local runs in-process; data persists at `./data/datomic`\n"
                                      "(or `/app/data/datomic` in Docker). The schema lives in\n"
                                      "`resources/datomic/schema.edn` and is transacted on startup.\n"))
-                              "\nVisit `/notes` to see the demo CRUD feature.\n"))
+                              "\nThe home screen at `/` is a hub: counter demo,\n"
+                              "links to the DB-backed `/notes` feature, the auth-gated\n"
+                              "`/dashboard`, and a top nav showing your login state.\n"))
                    (and auth? (not= db "none") (not= db :none))
                    (conj (str "## Auth\n\n"
-                              "Cookie-session auth is wired in. Visit `/signup` to create\n"
-                              "an account, then `/login`. The `wun_session` cookie carries\n"
-                              "an opaque token; the `sessions` table maps token -> user.\n"
-                              "Passwords are hashed with bcrypt (`buddy-hashers`).\n\n"
+                              "Cookie-less, token-based session auth is wired in. The\n"
+                              "session token is held in `(:session state)` and persists\n"
+                              "across reloads via the existing client-side hot-cache.\n\n"
+                              "- `/signup`: create an account (bcrypt-hashed password).\n"
+                              "- `/login`:  sign in to an existing account.\n"
+                              "- `/dashboard`: an auth-gated screen demonstrating the\n"
+                              "  render-time `(:session state)` check pattern.\n"
+                              "- `/notes`: the compose form is hidden when logged out.\n\n"
+                              "Auth is **single-tenant** in this scaffold: state lives in\n"
+                              "one global atom, so 'logged in as X' is shared across\n"
+                              "connections. Per-connection sessions land when the\n"
+                              "framework grows per-conn state. For multi-user production,\n"
+                              "you'll want to thread the session token into intent params\n"
+                              "and look up the user in each morph (rather than reading\n"
+                              "from `(:session state)`).\n\n"
                               "Set `SESSION_SECRET` (32+ random bytes) in production --\n"
                               "the dev default is unsafe.\n"))
                    docker?
