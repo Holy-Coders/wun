@@ -21,6 +21,7 @@
             [wun.web.renderers  :as renderers]
             ;; populate registries:
             wun.foundation.components
+            wun.forms.intents
             wun.web.foundation
             wun.app.counter
             wun.app.about))

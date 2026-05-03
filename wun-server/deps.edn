@@ -27,7 +27,7 @@
   ;; Runs tests for pieces that don't transitively require pedestal /
   ;; malli / logback. The full `:test` alias above runs everything on a
   ;; box with normal Clojars connectivity.
-  :test-noclojars {:replace-paths ["src" "test"]
+  :test-noclojars {:replace-paths ["src" "test" "../wun-shared/src"]
                    :replace-deps  {org.clojure/clojure       {:mvn/version "1.12.0"}
                                    org.clojure/core.async    {:mvn/version "1.6.681"}
                                    org.clojure/data.json     {:mvn/version "2.5.0"}
@@ -45,6 +45,6 @@
                                "-n" "wun.server.heartbeat-test"
                                "-n" "wun.server.backpressure-test"
                                "-n" "wun.server.session-test"
+                               "-n" "wun.server.upload-test"
                                "-n" "wun.server.pubsub-test"
-                               "-n" "wun.server.presence-test"
-                               "-n" "wun.server.upload-test"]}}}
+                               "-n" "wun.server.presence-test"]}}}

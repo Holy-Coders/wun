@@ -44,6 +44,7 @@
             [wun.server.session    :as session]
             [wun.server.state      :as state]
             [wun.server.telemetry  :as telemetry]
+            [wun.server.upload     :as upload]
             [wun.server.wire       :as wire])
   (:import  [java.io File]
             [java.net URLEncoder]
@@ -518,6 +519,22 @@
 ;; own. Apps wire `register-rotation-handler!` to update their users
 ;; table when the new token is minted.
 
+;; ---------------------------------------------------------------------------
+;; Upload endpoint. The handler reads the request body as a stream
+;; and writes it to disk in chunks, pushing progress patches via the
+;; standard broadcast path so the SSE stream surfaces them on the
+;; client. CSRF is enforced inside `wun.server.upload/handle-upload!`
+;; (it reads `X-Wun-CSRF` from the request directly so we can keep
+;; the body unbuffered -- pedestal's body-params would consume it).
+
+(def ^:private upload-handler
+  {:name  ::upload
+   :enter (fn [ctx]
+            (let [resp (upload/handle-upload!
+                        (:request ctx)
+                        (fn [cid] (broadcast-to-conn! cid)))]
+              (assoc ctx :response resp)))})
+
 (defn- session-rotate-handler [request]
   (let [body  (or (:transit-params request) (:json-params request))
         old   (or (get-in request [:headers "x-wun-session"])
@@ -691,6 +708,8 @@
                                csrf-interceptor
                                session-rotate-handler]
       :route-name :wun-session-rotate]
+     ["/upload" :post [rate-limit-interceptor upload-handler]
+      :route-name :wun-upload]
      ["/healthz" :get  healthz-handler  :route-name :wun-healthz]
      ["/web-frames/:key"        :get web-frame-handler :route-name :wun-web-frame]
      ["/web-frames/:key/:token" :get web-frame-handler :route-name :wun-web-frame-token]}))

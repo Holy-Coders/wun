@@ -224,6 +224,37 @@
   []
   (dispatch! :wun/pop {}))
 
+;; ---------------------------------------------------------------------------
+;; File uploads. POSTs raw file bytes to /upload with metadata in
+;; headers; the server pushes progress patches via the SSE stream.
+;; The `:uploads` map under app state is the source of truth -- the
+;; UI binds against it, not against the local upload-id we generate.
+
+(defn- random-uuid-str []
+  (.toString (random-uuid)))
+
+(defn start-upload!
+  "Begin uploading a browser File handle bound to `form` / `field`.
+   Returns the upload-id; the server will populate the matching
+   `:uploads <id>` entry as bytes flow."
+  [form field ^js file]
+  (let [uid (random-uuid-str)
+        headers (cond-> #js {"X-Wun-Conn-ID"   (or @conn-id "")
+                             "X-Wun-Upload-ID" uid
+                             "X-Wun-Filename"  (.-name file)
+                             "X-Wun-Size"      (str (.-size file))
+                             "Content-Type"    (or (.-type file)
+                                                   "application/octet-stream")}
+                  form  (gobject/set "X-Wun-Form"  (clojure.core/name form))
+                  field (gobject/set "X-Wun-Field" (clojure.core/name field))
+                  @csrf-token (gobject/set "X-Wun-CSRF" @csrf-token))]
+    (-> (js/fetch (str server-base "/upload")
+                  #js {:method  "POST"
+                       :headers headers
+                       :body    file})
+        (.catch (fn [e] (js/console.error "wun: upload failed" e))))
+    uid))
+
 (defn replay-pending!
   "Re-POST every still-pending intent. Called when SSE reconnects so
    anything fired during the offline window actually reaches the

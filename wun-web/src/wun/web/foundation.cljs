@@ -7,7 +7,8 @@
    move from Reagent's `:on-click` directly-attached-fn to Replicant's
    `:on {:click <fn>}` map -- Replicant's documented idiom and the
    only one its renderer recognises."
-  (:require [wun.web.renderers  :as r]
+  (:require [wun.forms          :as forms]
+            [wun.web.renderers  :as r]
             [wun.web.intent-bus :as bus]))
 
 ;; :wun/Stack -- vertical by default; horizontal when :direction = :row.
@@ -167,3 +168,77 @@
               :background    "linear-gradient(90deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.06) 100%)"
               :background-size "200% 100%"
               :animation     "wun-skeleton 1.4s ease-in-out infinite"}}]))
+
+;; --- Phase 4: form / field / file-input renderers --------------------------
+
+(r/register! :wun/Form
+  (fn [{:keys [id]} children]
+    (into [:form.wun-form
+           {:on {:submit (fn [ev]
+                           (.preventDefault ev)
+                           (bus/dispatch! :wun.forms/submit {:form id}))}}]
+          children)))
+
+(r/register! :wun/Field
+  (fn [{:keys [form name type label placeholder]} _children]
+    (let [state @bus/confirmed-state
+          value (or (forms/field-value state form name) "")
+          err   (forms/field-error state form name)
+          touched? (forms/field-touched? state form name)]
+      [:label.wun-field
+       {:style {:display "flex" :flex-direction "column" :gap "4px"}}
+       (when label [:span.wun-field__label label])
+       [:input.wun-input
+        {:type        (or type "text")
+         :value       value
+         :placeholder placeholder
+         :name        (clojure.core/name name)
+         :on          {:input (fn [ev]
+                                (let [v (.-value (.-target ev))]
+                                  (bus/dispatch! :wun.forms/change
+                                                 {:form  form
+                                                  :field name
+                                                  :value v})))
+                       :blur  (fn [_]
+                                (bus/dispatch! :wun.forms/touch
+                                               {:form form :field name}))}}]
+       (when (and err touched?)
+         [:span.wun-field__error
+          {:style {:color "#9b1c1c" :font-size "12px"}}
+          (str err)])])))
+
+(r/register! :wun/FileInput
+  (fn [{:keys [form field accept multiple]} _children]
+    (let [state @bus/confirmed-state
+          ;; Render any active uploads bound to this field as a
+          ;; progress strip below the picker.
+          actives (->> (:uploads state)
+                       vals
+                       (filter #(and (= form  (:form  %))
+                                     (= field (:field %))))
+                       (sort-by :upload-id))]
+      (into [:div.wun-fileinput
+             [:input
+              {:type "file"
+               :accept accept
+               :multiple (boolean multiple)
+               :on {:change (fn [ev]
+                              (let [files (.. ev -target -files)
+                                    n     (.-length files)]
+                                (dotimes [i n]
+                                  (let [f (.item files i)]
+                                    (bus/start-upload! form field f)))))}}]]
+            (for [u actives]
+              [:div.wun-fileinput__progress
+               {:style {:display "flex" :align-items "center" :gap "8px"
+                        :font "12px ui-monospace, monospace"
+                        :margin-top "4px"}}
+               [:span (:filename u)]
+               (case (:status u)
+                 :complete [:span {:style {:color "#1b6c3a"}} "uploaded"]
+                 :errored  [:span {:style {:color "#9b1c1c"}}
+                            (str "error: " (:error u))]
+                 [:progress
+                  {:max (or (:size u) 0)
+                   :value (or (:received u) 0)
+                   :style {:flex 1}}])]))))
