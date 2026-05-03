@@ -37,6 +37,7 @@
                                   :meta {:title "x"}
                                   :csrf-token "tok-X"
                                   :resync? true
+                                  :theme {:wun.color/primary "#0a66c2"}
                                   :ignored-key "foo"})]
     (is (= "id-1" (:resolves-intent env)))
     (is (= {:n 1} (:state env)))
@@ -46,6 +47,7 @@
     (is (= {:title "x"} (:meta env)))
     (is (= "tok-X" (:csrf-token env)))
     (is (true? (:resync? env)))
+    (is (= {:wun.color/primary "#0a66c2"} (:theme env)))
     ;; Unknown keys are stripped to keep the wire surface tight.
     (is (not (contains? env :ignored-key)))))
 

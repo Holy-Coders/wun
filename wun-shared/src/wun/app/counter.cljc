@@ -42,10 +42,13 @@
                     :type  "website"}})
    :render
    (fn [state]
-     [:wun/Stack {:gap 12 :padding 24}
+     ;; All sizing/colors flow through theme tokens. The server's
+     ;; theme resolver substitutes them before shipping; every client
+     ;; sees the same resolved values.
+     [:wun/Stack {:gap :wun.spacing/md :padding :wun.spacing/lg}
       [:myapp/Greeting {:name "Aaron"}]
       [:wun/Text {:variant :h1} (str "Counter: " (:counter state 0))]
-      [:wun/Stack {:direction :row :gap 8}
+      [:wun/Stack {:direction :row :gap :wun.spacing/sm}
        [:wun/Button {:on-press {:intent :counter/dec   :params {}}}     "-"]
        [:wun/Button {:on-press {:intent :counter/inc   :params {}}}     "+"]
        [:wun/Button {:on-press {:intent :counter/by    :params {:n 5}}} "+5"]
@@ -56,7 +59,7 @@
             "Clients that advertise :myapp/Greeting render it natively; "
             "clients that don't (like the current web bundle) see a "
             "WebFrame fallback in its place.")]
-      [:wun/Stack {:direction :row :gap 8}
+      [:wun/Stack {:direction :row :gap :wun.spacing/sm}
        [:wun/Button {:on-press {:intent :wun/navigate
                                 :params {:path "/about"}}}
         "→ About"]]])})

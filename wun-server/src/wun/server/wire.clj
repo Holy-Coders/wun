@@ -124,7 +124,8 @@
                                        :presentations
                                        :meta
                                        :csrf-token
-                                       :resync?])))))
+                                       :resync?
+                                       :theme])))))
 
 (defn encode-envelope
   "Encode an envelope using the given wire `fmt` (`:transit` or `:json`)."

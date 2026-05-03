@@ -36,6 +36,7 @@
             [wun.diff              :as diff]
             [wun.intents           :as intents]
             [wun.screens           :as screens]
+            [wun.theme             :as theme]
             [wun.server.backpressure :as backpressure]
             [wun.server.csrf       :as csrf]
             [wun.server.heartbeat  :as heartbeat]
@@ -101,24 +102,31 @@
          _           (when was-stale? (state/update-prior-tree! ch nil))
          conn-state  (state/state-for conn-id)
          screen-key  (state/screen-key ch)
+         screen-spec (screens/lookup screen-key)
+         theme-map   (theme/cascade conn-state (:theme screen-spec))
          raw         (current-tree-for conn-id screen-key)
+         themed      (theme/resolve-tree theme-map raw)
          caps        (state/caps ch)
          fmt         (state/fmt ch)
          env-ver     (state/envelope-version ch)
-         tree        (capabilities/substitute raw caps web-frame-src)
+         tree        (capabilities/substitute themed caps web-frame-src)
          prior       (state/prior-tree ch)
          patches     (binding [diff/*envelope-version* env-ver]
                        (diff/diff prior tree))
          meta        (screens/render-meta screen-key conn-state)
          prior-meta  (state/prior-meta ch)
          meta-extra  (when (and meta (not= meta prior-meta)) {:meta meta})
+         prior-theme (state/prior-theme ch)
+         theme-extra (when (and theme-map (not= theme-map prior-theme))
+                       {:theme theme-map})
          resync-extra (when was-stale? {:resync? true})]
-     (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra)
+     (when (or (seq patches) resolves-intent (seq extra-keys) meta-extra theme-extra)
        (let [env  (wire/patch-envelope patches
                                        (merge {:resolves-intent  resolves-intent
                                                :state            conn-state
                                                :envelope-version env-ver}
                                               meta-extra
+                                              theme-extra
                                               resync-extra
                                               extra-keys))
              data (wire/encode-envelope fmt env)
@@ -126,7 +134,8 @@
          (cond
            offered?
            (do (state/update-prior-tree! ch tree)
-               (when meta-extra (state/update-prior-meta! ch meta))
+               (when meta-extra  (state/update-prior-meta!  ch meta))
+               (when theme-extra (state/update-prior-theme! ch theme-map))
                (when was-stale?
                  (backpressure/clear-stale! conn-id)
                  (telemetry/emit! :wun/snapshot.resync

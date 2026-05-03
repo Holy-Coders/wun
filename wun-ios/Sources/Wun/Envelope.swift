@@ -30,9 +30,11 @@ public struct Envelope: Decodable, Equatable, Sendable {
     public let csrfToken: String?
     /// True when this envelope is a backpressure-driven full re-render.
     public let resync: Bool?
+    /// Effective theme map: namespaced keyword string -> resolved value.
+    public let theme: JSON?
 
     enum CodingKeys: String, CodingKey {
-        case patches, status, state, error, meta, presentations
+        case patches, status, state, error, meta, presentations, theme
         case resolvesIntent  = "resolves-intent"
         case connID          = "conn-id"
         case screenStack     = "screen-stack"
@@ -52,7 +54,8 @@ public struct Envelope: Decodable, Equatable, Sendable {
                 error: JSON? = nil,
                 envelopeVersion: Int? = nil,
                 csrfToken: String? = nil,
-                resync: Bool? = nil) {
+                resync: Bool? = nil,
+                theme: JSON? = nil) {
         self.patches = patches
         self.status = status
         self.state = state
@@ -65,6 +68,7 @@ public struct Envelope: Decodable, Equatable, Sendable {
         self.envelopeVersion = envelopeVersion
         self.csrfToken = csrfToken
         self.resync = resync
+        self.theme = theme
     }
 
     /// Custom decoder so error envelopes (which omit `patches`) decode
@@ -83,6 +87,7 @@ public struct Envelope: Decodable, Equatable, Sendable {
         self.envelopeVersion = try c.decodeIfPresent(Int.self,        forKey: .envelopeVersion)
         self.csrfToken       = try c.decodeIfPresent(String.self,     forKey: .csrfToken)
         self.resync          = try c.decodeIfPresent(Bool.self,       forKey: .resync)
+        self.theme           = try c.decodeIfPresent(JSON.self,       forKey: .theme)
     }
 
     /// Decode an envelope from raw JSON bytes.

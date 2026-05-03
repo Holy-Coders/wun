@@ -55,6 +55,7 @@
             [wun.diff           :as diff]
             [wun.intents        :as intents]
             [wun.screens        :as screens]
+            [wun.theme          :as theme]
             [wun.web.meta       :as wmeta]
             [wun.web.persist    :as persist]
             [wun.web.renderers  :as renderers]))
@@ -111,6 +112,12 @@
 ;; so the wire stays uniform across platforms.
 (defonce presentations (atom [:push]))
 
+;; Effective theme map currently in force on this connection. The
+;; server pushes it on every cascade-changing envelope; we mirror it
+;; locally so optimistic renders resolve tokens against the same
+;; values the server saw.
+(defonce theme-map (atom {}))
+
 (defn current-screen-key [] (peek @screen-stack))
 
 (defn- now-ms [] (.getTime (js/Date.)))
@@ -144,8 +151,9 @@
         unknown-renderer placeholder) instead of as :wun/WebFrame
         fallbacks."
   []
-  (let [tree (screens/render (current-screen-key) (predicted-state))]
-    (reset! display-tree (capabilities/substitute tree (client-caps)))))
+  (let [tree   (screens/render (current-screen-key) (predicted-state))
+        themed (theme/resolve-tree @theme-map tree)]
+    (reset! display-tree (capabilities/substitute themed (client-caps)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Transit + POST
@@ -301,7 +309,8 @@
   (persist/save! {:confirmed-state @confirmed-state
                   :confirmed-tree  @confirmed-tree
                   :screen-stack    @screen-stack
-                  :meta            @last-meta}))
+                  :meta            @last-meta
+                  :theme           @theme-map}))
 
 (defn apply-envelope!
   "Reconcile a server envelope: maybe-bootstrap, apply patches against
@@ -320,6 +329,7 @@
     pres   :presentations
     meta   :meta
     env-v  :envelope-version
+    th     :theme
     rsync? :resync?
     :keys [patches state resolves-intent status error]}]
   (when (= status :error)
@@ -354,6 +364,9 @@
   (when meta
     (reset! last-meta meta)
     (wmeta/apply-meta! meta))
+  (when th
+    (reset! theme-map th)
+    (wmeta/apply-theme! th))
   (when resolves-intent
     (swap! pending (fn [ps] (vec (remove #(= (:id %) resolves-intent) ps)))))
   (recompute!)
@@ -369,7 +382,8 @@
         {snap-state :confirmed-state
          snap-tree  :confirmed-tree
          snap-stack :screen-stack
-         snap-meta  :meta} snap]
+         snap-meta  :meta
+         snap-theme :theme} snap]
     (when snap-state (reset! confirmed-state snap-state))
     (when snap-tree  (reset! confirmed-tree  snap-tree))
     (when (seq snap-stack)
@@ -378,6 +392,9 @@
     (when snap-meta
       (reset! last-meta snap-meta)
       (wmeta/apply-meta! snap-meta))
+    (when snap-theme
+      (reset! theme-map snap-theme)
+      (wmeta/apply-theme! snap-theme))
     (recompute!)
     (some? snap)))
 

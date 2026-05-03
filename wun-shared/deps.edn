@@ -26,6 +26,7 @@
                                "-n" "wun.diff-test"
                                "-n" "wun.capabilities-test"
                                "-n" "wun.screens-test"
+                               "-n" "wun.theme-test"
                                "-n" "wun.uploads-test"
                                "-n" "wun.server.state-test"
                                "-n" "wun.server.wire-test"

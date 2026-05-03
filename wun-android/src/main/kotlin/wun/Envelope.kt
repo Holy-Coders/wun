@@ -36,6 +36,8 @@ data class Envelope(
     @SerialName("csrf-token")       val csrfToken: String? = null,
     /** True when this envelope is a backpressure-driven full re-render. */
     @SerialName("resync?")          val resync: Boolean? = null,
+    /** Effective theme map: namespaced keyword string -> resolved value. */
+    val theme: JsonElement? = null,
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }

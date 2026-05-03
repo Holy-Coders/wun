@@ -253,6 +253,20 @@
                          (assoc-in m [event-ch :prior-meta] meta)
                          m))))
 
+;; Per-connection theme cache. Identical pattern to prior-meta:
+;; remember the last theme map we sent so we don't re-ship it on every
+;; envelope. Comparing by `=` is fine because theme maps are small and
+;; flat.
+
+(defn prior-theme [event-ch]
+  (get-in @connections [event-ch :prior-theme]))
+
+(defn update-prior-theme! [event-ch theme]
+  (swap! connections (fn [m]
+                       (if (contains? m event-ch)
+                         (assoc-in m [event-ch :prior-theme] theme)
+                         m))))
+
 (defn closed?
   "True when `event-ch` has been closed (typically by Pedestal after
    the client disconnects). Reaches into core.async's impl protocol;
