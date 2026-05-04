@@ -64,8 +64,8 @@
                                 :params {:path "/about"}}}
         "→ About"]
        [:wun/Button {:on-press {:intent :wun/navigate
-                                :params {:path "/showcase"}}}
-        "→ Showcase"]
+                                :params {:path "/login"}}}
+        "→ Acme demo"]
        [:wun/Button {:on-press {:intent :wun/navigate
                                 :params {:path "/_wun/dashboard"}}}
-        "→ Dashboard"]]])})
+        "→ Dev dashboard"]]])})

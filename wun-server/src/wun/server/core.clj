@@ -4,23 +4,24 @@
    live in wun-shared and are populated by namespace load --
    requiring `wun.foundation.components` registers the `:wun/*`
    vocabulary; requiring `wun.app.*` registers the built-in demo
-   screens (counter, about, showcase) the framework's own dev loop
-   serves at `/`, `/about`, `/showcase`.
+   screens (counter, about, acme) the framework's own dev loop
+   serves at `/`, `/about`, `/login`, `/dashboard`.
 
-   `start!` also auto-mounts the live dashboard at `/_wun/dashboard`
-   and wires the showcase live demo's server-side glue, both gated
-   on `WUN_PROFILE != prod`. Production deployments run their own
-   `start!` from a consumer-app entry point and opt in explicitly."
+   `start!` also auto-mounts the live dev dashboard at
+   `/_wun/dashboard` and wires the Acme SaaS demo's server-side glue
+   (auth, sessions, realtime tick), both gated on `WUN_PROFILE !=
+   prod`. Production deployments run their own `start!` from a
+   consumer-app entry point and opt in explicitly."
   (:require [wun.server.http         :as http]
             [wun.server.dashboard    :as dashboard]
-            [wun.server.app.showcase :as app-showcase]
+            [wun.server.app.acme     :as app-acme]
             ;; Side-effecting requires populate the open registries.
             wun.foundation.components
             wun.foundation.theme
             wun.forms.intents
             wun.app.counter
             wun.app.about
-            wun.app.showcase
+            wun.app.acme
             myapp.components)
   (:gen-class))
 
@@ -38,7 +39,7 @@
    (when (dev-profile?)
      ;; Both are idempotent on repeat calls.
      (dashboard/install!)
-     (app-showcase/init!))
+     (app-acme/init!))
    @server))
 
 (defn stop! []
@@ -49,9 +50,10 @@
 (defn -main [& _]
   (start!)
   (println "Wun server listening on http://localhost:8080")
-  (println "  GET  /            built-in counter demo")
-  (println "  GET  /showcase    framework feature showcase (forms · live · fallback · theme)")
-  (println "  GET  /_wun/dashboard   live dev dashboard")
-  (println "  GET  /wun         SSE patch stream")
-  (println "  POST /intent      intent endpoint (transit-json)")
+  (println "  GET  /                  built-in counter demo")
+  (println "  GET  /login             Acme SaaS demo (login)")
+  (println "  GET  /dashboard         Acme SaaS demo (dashboard, auth-gated)")
+  (println "  GET  /_wun/dashboard    live dev dashboard")
+  (println "  GET  /wun               SSE patch stream")
+  (println "  POST /intent            intent endpoint (transit-json)")
   @(promise))
