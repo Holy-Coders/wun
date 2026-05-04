@@ -1395,24 +1395,25 @@
       (spit (str main-path) text))))
 
 (defn- patch-server-main-extras!
-  "Inject the dev-dashboard mount, the theme default, and the
-   showcase live-demo wiring into `server/main.clj`. Theme always
-   applies (passed through unconditionally). Dashboard install is
-   gated on `:dashboard-dev?` and runs only outside
-   `WUN_PROFILE=prod`. Showcase is gated on `:showcase?`. All edits
-   are idempotent — re-running is a no-op thanks to `str/includes?`
+  "Inject the dev-dashboard mount, the theme default, and the Acme
+   SaaS demo wiring into `server/main.clj`. Theme always applies
+   (passed through unconditionally). Dashboard install is gated on
+   `:dashboard-dev?` and runs only outside `WUN_PROFILE=prod`. The
+   demo is gated on `:showcase?` (kept as the flag name for
+   backwards-compat with prior CLI invocations). All edits are
+   idempotent — re-running is a no-op thanks to `str/includes?`
    guards."
   [main-path {:keys [dashboard-dev? theme showcase?]}]
   (when (fs/exists? main-path)
     (let [text          (slurp (str main-path))
           want-theme?   (some? theme)
           want-dash?    (boolean dashboard-dev?)
-          want-show?    (boolean showcase?)
+          want-demo?    (boolean showcase?)
           extra-reqs    (cond-> []
                           want-theme? (conj "wun.theme")
                           want-dash?  (conj "wun.server.dashboard")
-                          want-show?  (conj "myapp.showcase"
-                                            "myapp.server.showcase"))
+                          want-demo?  (conj "myapp.acme"
+                                            "myapp.server.acme"))
           new-reqs      (->> extra-reqs
                              (remove #(str/includes? text %))
                              (str/join "\n            "))
@@ -1431,24 +1432,24 @@
                                    (not (str/includes? text "(wun.server.dashboard/install!)")))
                           (str "(when-not (= \"prod\" (System/getenv \"WUN_PROFILE\"))\n    "
                                "(wun.server.dashboard/install!))\n  "))
-          show-block    (when (and want-show?
-                                   (not (str/includes? text "(myapp.server.showcase/init!)")))
-                          (str "(myapp.server.showcase/init!)\n  "))
-          inject        (str (or theme-block "") (or dash-block "") (or show-block ""))
+          demo-block    (when (and want-demo?
+                                   (not (str/includes? text "(myapp.server.acme/init!)")))
+                          (str "(myapp.server.acme/init!)\n  "))
+          inject        (str (or theme-block "") (or dash-block "") (or demo-block ""))
           text          (if (and (seq inject) (str/includes? text "(http/start!"))
                           (str/replace-first text "(http/start!" (str inject "(http/start!"))
                           text)]
       (spit (str main-path) text))))
 
 (defn- patch-web-main-extras!
-  "Add showcase requires to `web/main.cljs` so the cljc registries
-   load and the cljs-only `:myapp.showcase/RichEditor` web renderer
-   registers. Idempotent."
+  "Add the Acme demo cljc require to `web/main.cljs` so its screens
+   and intents register on the web side. Slice-1 demo uses only the
+   built-in `:wun/*` vocabulary and ships no custom web renderer of
+   its own; if you add one later, register it here too. Idempotent."
   [main-path {:keys [showcase?]}]
   (when (and showcase? (fs/exists? main-path))
     (let [text     (slurp (str main-path))
-          adds     (->> ["myapp.showcase"
-                         "myapp.web.showcase-renderers"]
+          adds     (->> ["myapp.acme"]
                         (remove #(str/includes? text %)))
           new-reqs (str/join "\n            " (map #(str "[" % "]") adds))
           text     (if (seq adds)
@@ -1589,7 +1590,7 @@
                      (prompt! "Auto-mount the live dev dashboard at /_wun/dashboard in dev mode?" true))
         showcase?  (if (was-set? :showcase?)
                      (:showcase? opts)
-                     (prompt! "Include showcase pages (forms / pubsub / capability fallback)?" true))]
+                     (prompt! "Include the Acme SaaS demo (login + realtime dashboard)?" true))]
     (assoc opts
            :positional      [name]
            :db              db
@@ -1609,7 +1610,7 @@
   (println "  theme:         " (resolve-theme-color theme)
            (when (get theme-palette theme) (str "(" theme ")")))
   (println "  dashboard dev: " (if dashboard-dev? "yes (auto-mount)" "no"))
-  (println "  showcase pages:" (if showcase? "yes" "no"))
+  (println "  Acme SaaS demo:" (if showcase? "yes" "no"))
   (rule "─" 60)
   (println))
 

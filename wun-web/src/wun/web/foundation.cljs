@@ -32,9 +32,9 @@
                      :h2 :h2
                      :p)
           klass    (case variant
-                     :h1 "wun-text wun-text--h1"
-                     :h2 "wun-text wun-text--h2"
-                     "wun-text wun-text--body")]
+                     :h1 ["wun-text" "wun-text--h1"]
+                     :h2 ["wun-text" "wun-text--h2"]
+                     ["wun-text" "wun-text--body"])]
       (into [base-tag {:class klass}] children))))
 
 ;; :wun/Button -- :on-press is an intent reference, dispatched through
